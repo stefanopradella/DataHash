@@ -146,7 +146,7 @@ TestData = {'', 'd41d8cd98f00b204e9800998ecf8427e'; ...
    '78901234567890'], ...
    '57edf4a22be3c955ac49da2e2107b67a'; ...
    ...
-   char(0:255), 'e2c865db4162bed963bfaa9ef6ac18f0'};
+   uint8(0:255), 'e2c865db4162bed963bfaa9ef6ac18f0'};
 
 try
    for iTest = 1:size(TestData, 1)
@@ -155,12 +155,20 @@ try
       % Create the file:
       [fid, msg] = fopen(TestFile, 'w');
       assert(fid ~= -1, msg);
-      fwrite(fid, Test{1});
+      if isa(Test{1}, 'uint8')
+         fwrite(fid, Test{1}, 'uint8');
+      else
+         fwrite(fid, Test{1});
+      end
       fclose(fid);
    
       % Get hash for the file:
-      R    = DataHash(TestFile, 'File');
-      Want = DataHash(Test{1}, 'ascii');
+      R = DataHash(TestFile, 'File');
+      if isa(Test{1}, 'uint8')
+         Want = DataHash(Test{1}, 'bin');
+      else
+         Want = DataHash(Test{1}, 'ascii');
+      end
       if isequal(R, Want, Test{2})
          fprintf('  ok: empty file\n');
       else
@@ -272,6 +280,71 @@ if MatlabV >= 901  % R2016b
       error([ErrID, ':String'], 'Bad result for string.');
    end
    fprintf('  ok: String class\n');
+end
+
+% Check fixed-point type:
+hasFixedPoint = (exist('fi', 'file') == 2);
+if hasFixedPoint
+   try
+      fi(0, 1, 8, 0);
+   catch
+      hasFixedPoint = false;
+   end
+end
+
+if hasFixedPoint
+   Data = fi([1.5, -2], 1, 16, 12);
+   S1   = DataHash(Data, 'Array');
+   if ~isequal(S1, 'c90c55f07c2d42fe0817e36171660da9')
+      error([ErrID, ':FixedPoint'], 'Bad result for fixed-point array.');
+   end
+
+   S1 = DataHash(Data, 'bin');
+   if ~isequal(S1, DataHash(storedInteger(Data), 'bin'), ...
+         '6df751e7d678185345abfcb4ec152e96')
+      error([ErrID, ':FixedPoint'], 'Bad result for fixed-point binary input.');
+   end
+
+   Data = fi(1.5, 1, 16, 10);
+   S1   = DataHash(Data, 'Array');
+   if ~isequal(S1, '46f358631ae55d8ba810701b54613d95')
+      error([ErrID, ':FixedPoint'], 'Bad result for fixed-point numerictype.');
+   end
+
+   Data = fi(1.5, 1, 16, 12, 'RoundingMethod', 'Floor', ...
+      'OverflowAction', 'Wrap');
+   S1   = DataHash(Data, 'Array');
+   if ~isequal(S1, '37747e91f02c884f77c6d010596e3295')
+      error([ErrID, ':FixedPoint'], 'Bad result for fixed-point fimath.');
+   end
+
+   Data = complex(fi(1, 1, 8, 4), fi(2, 1, 8, 4));
+   S1   = DataHash(Data, 'Array');
+   if ~isequal(S1, '34ba124f88c626cef7b9821aaceb2f75')
+      error([ErrID, ':FixedPoint'], 'Bad result for complex fixed-point.');
+   end
+
+   Data = fi(1, 1, 65, 0);
+   S1   = DataHash(Data, 'Array');
+   if ~isequal(S1, 'f18e644a6e75e5acd61c3031439aaf7d')
+      error([ErrID, ':FixedPoint'], 'Bad result for wide fixed-point.');
+   end
+
+   S1 = DataHash(Data, 'bin');
+   if ~isequal(S1, DataHash(uint8(reshape(hex(Data(:)).', 1, [])), 'bin'), ...
+         '23d6c62be6c5a327666e97b286c8a99a')
+      error([ErrID, ':FixedPoint'], ...
+         'Bad result for wide fixed-point binary input.');
+   end
+
+   S1 = DataHash(fi([], 1, 8, 3), 'Array');
+   S2 = DataHash(fi([], 1, 16, 12), 'Array');
+   if ~isequal(S1, 'bcfb3334f76d5720b6d584fe2e647acd') || ...
+         ~isequal(S2, 'c0255d257f60f67cf02277fc68257ae1') || isequal(S1, S2)
+      error([ErrID, ':FixedPoint'], 'Bad result for empty fixed-point.');
+   end
+
+   fprintf('  ok: Fixed-point FI class\n');
 end
 
 % Speed test: ------------------------------------------------------------------
