@@ -9,8 +9,8 @@ function Hash = DataHash(Data, varargin)
 % INPUT:
 %   Data: Array of these built-in types:
 %           (U)INT8/16/32/64, SINGLE, DOUBLE, (real/complex, full/sparse)
-%           CHAR, LOGICAL, CELL (nested), STRUCT (scalar or array, nested),
-%           function_handle, string.
+%           fixed-point fi, CHAR, LOGICAL, CELL (nested), STRUCT (scalar or
+%           array, nested), function_handle, string.
 %   Opts: Char strings to specify the method, the input and theoutput types:
 %         Input types:
 %            'array': The contents, type and size of the input [Data] are
@@ -133,6 +133,7 @@ function Hash = DataHash(Data, varargin)
 % 040: 13-Nov-2018 01:20, Fields of Opt not case-sensitive anymore.
 % 041: 09-Feb-2019 18:12, ismethod(class(V),) to support R2018b.
 % 042: 02-Mar-2019 18:39, base64: in Java, short: Base64 with padding.
+% 043: 16-Sep-2026, Fixed-point FI arrays considered.
 %      Unit test. base64->short.
 
 % OPEN BUGS:
@@ -196,7 +197,9 @@ if isFile
       
 elseif isBin             % Contents of an elementary array, type tested already:
    if ~isempty(Data)     % Engine.update fails for empty input!
-      if isnumeric(Data)
+      if isa(Data, 'embedded.fi')
+         Engine = UpdateFiBin(Data, Engine);
+      elseif isnumeric(Data)
          if isreal(Data)
             Engine.update(typecast(Data(:), 'uint8'));
          else
@@ -274,6 +277,8 @@ elseif iscell(Data)                  % Get hash for all cell elements:
    for iS = 1:numel(Data)
       Engine = CoreHash(Data{iS}, Engine);
    end
+elseif isa(Data, 'embedded.fi')      % Fixed-point arrays:
+   Engine = CoreHashFi(Data, Engine);
 elseif isempty(Data)                 % Nothing to do
 elseif isnumeric(Data)
    if isreal(Data)
@@ -322,6 +327,80 @@ else  % Most likely a user-defined object:
       throw(ME);
    end
 end
+
+end
+
+% ******************************************************************************
+function Engine = CoreHashFi(Data, Engine)
+% Hash fixed-point arrays by type, local fimath and stored bits.
+
+hasLocalFimath = isfimathlocal(Data);
+if hasLocalFimath
+   FiMath = tostring(fimath(Data));
+else
+   FiMath = '';
+end
+
+Engine = CoreHash({tostring(numerictype(Data)), hasLocalFimath, FiMath}, ...
+   Engine);
+Engine = UpdateFiPayload(Data, Engine);
+
+end
+
+% ******************************************************************************
+function Engine = UpdateFiPayload(Data, Engine)
+
+if isreal(Data)
+   Engine = UpdateFiValue(Data, Engine);
+else
+   Engine = UpdateFiValue(real(Data), Engine);
+   Engine = UpdateFiValue(imag(Data), Engine);
+end
+
+end
+
+% ******************************************************************************
+function Engine = UpdateFiValue(Data, Engine)
+
+if Data.WordLength <= 64
+   Engine = CoreHash(storedInteger(Data), Engine);
+else
+   Engine = UpdateFiHexValue(Data, Engine);
+end
+
+end
+
+% ******************************************************************************
+function Engine = UpdateFiBin(Data, Engine)
+
+if isreal(Data)
+   Engine = UpdateFiBinValue(Data, Engine);
+else
+   Engine = UpdateFiBinValue(real(Data), Engine);
+   Engine = UpdateFiBinValue(imag(Data), Engine);
+end
+
+end
+
+% ******************************************************************************
+function Engine = UpdateFiBinValue(Data, Engine)
+
+if Data.WordLength <= 64
+   Payload = storedInteger(Data);
+   Engine.update(typecast(Payload(:), 'uint8'));
+else
+   Engine = UpdateFiHexValue(Data, Engine);
+end
+
+end
+
+% ******************************************************************************
+function Engine = UpdateFiHexValue(Data, Engine)
+% storedInteger does not support word lengths above 64 bits. HEX provides a
+% compact documented representation of the stored integer bits.
+
+Payload = hex(Data(:)).';
+Engine.update(uint8(Payload(:)));
 
 end
 
@@ -503,8 +582,9 @@ function R = Version_L()
 % 4: 28-Feb-2016 15:20, same output as GetMD5 for MD5 sums. Therefore the
 %    dimensions are casted to UINT64 at first.
 %    19-May-2018 01:13, STRING type considered.
-R.HashVersion = 4;
-R.Date        = [2018, 5, 19];
+% 5: 16-Sep-2026, Fixed-point FI arrays considered.
+R.HashVersion = 5;
+R.Date        = [2026, 9, 16];
 
 R.HashMethod  = {};
 try
