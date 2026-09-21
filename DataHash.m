@@ -88,7 +88,13 @@ function Hash = DataHash(Data, varargin)
 %   http://www.mathworks.com/matlabcentral/fileexchange/25921
 %
 % Tested: Matlab 2009a, 2015b(32/64), 2016b, 2018b, Win7/10
-% Author: Jan Simon, Heidelberg, (C) 2011-2019 matlab.2010(a)n(MINUS)simon.de
+% Original author: Jan Simon, Heidelberg, matlab.2010(a)n(MINUS)simon.de
+% Copyright (c) 2011-2019, Jan Simon
+% Modifications copyright (c) 2026, Stefano Pradella <stefano.pradella.97@gmail.com>
+% 
+% Repository: https://github.com/stefanopradella/DataHash
+% SPDX-License-Identifier: BSD-3-Clause
+% See license.txt.
 %
 % See also: TYPECAST, CAST.
 %
@@ -98,7 +104,6 @@ function Hash = DataHash(Data, varargin)
 %   http://www.mathworks.com/matlabcentral/fileexchange/29457
 
 % $JRev: R-R V:043 Sum:VbfXFn6217Hp Date:18-Apr-2019 12:11:42 $
-% $License: BSD (use/copy/change/redistribute on own risk, mention the author) $
 % $UnitTest: uTest_DataHash $
 % $File: Tools\GLFile\DataHash.m $
 % History:
