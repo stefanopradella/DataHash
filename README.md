@@ -33,7 +33,7 @@ Supported hashing methods:
 - `MD2`
 - `MD5`
 
-Available methods depend on Java; call `DataHash()` to inspect them.
+Call `DataHash()` to inspect the available methods.
 
 Supported input types:
 
@@ -81,3 +81,12 @@ asciiHash = DataHash('abc', 'SHA-256', 'ascii');
 byteHash = DataHash(uint8('abc'), 'SHA-256', 'bin');
 assert(strcmp(asciiHash, byteHash));
 ```
+
+# Development Philosophy
+
+DataHash is designed as a single, portable function with no dependencies beyond MATLAB itself.
+Starting with version 1.9.0, DataHash requires MATLAB R2019b or later and has no JRE dependency, allowing it to run in a default MATLAB R2026b installation, where Java is no longer included by default.
+
+Release packages for version 1.9.0 and later also provide the optional `DataHashCore` MEX accelerator. It accelerates only the hashing core, while argument parsing and serialization remain in MATLAB. If a compatible MEX binary is unavailable, DataHash uses its native MATLAB implementation, preserving the portable single-file workflow without making platform-specific binaries mandatory.
+
+For older MATLAB releases, use v1.8.0, which requires Java and was tested on MATLAB R2009a, R2015b, R2016b, and R2018b.
