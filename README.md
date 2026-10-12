@@ -82,6 +82,20 @@ byteHash = DataHash(uint8('abc'), 'SHA-256', 'bin');
 assert(strcmp(asciiHash, byteHash));
 ```
 
+# Building the standalone file
+
+The authored functions live under `src`. From the repository root, assemble the standalone distribution file with:
+
+```matlab
+outputFile = buildDataHash();
+```
+
+This creates `DataHash.m` in the repository root. Distribute it with `license.txt`; the generated file retains a short attribution and license reference. Edit the files under `src` and rebuild instead of editing the generated file.
+
+To use another destination, pass the path to a file named `DataHash.m`. Its parent folder must already exist, and the destination must be outside `src`.
+
+The assembler uses an explicit source list and rejects missing or unlisted MATLAB files under `src`. Identical sources produce identical UTF-8 output with LF line endings. The destination is replaced after the complete file has been written and closed successfully.
+
 # Development Philosophy
 
 DataHash is designed as a single, portable function with no dependencies beyond MATLAB itself.
