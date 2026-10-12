@@ -10,7 +10,7 @@ Put `DataHash.m` in the current MATLAB folder or add this repository to the MATL
 hash = DataHash(data, method, inputType, outputFormat)
 ```
 
-The option strings can be supplied in any order, and each is optional. By default, `method` is `MD5`, `inputType` is `array`, and `outputFormat` is lowercase `hex`.
+Options must be supplied in the order shown, as character vectors or scalar strings. Only trailing arguments can be omitted. By default, `method` is `MD5`, `inputType` is `array`, and `outputFormat` is lowercase `hex`. To select an output format, supply the method and input type too. Legacy options structures are no longer accepted.
 
 Supported data types for `data` with `array` input:
 
@@ -58,14 +58,14 @@ Hash an empty array with the defaults: `MD5`, `array` input, and lowercase hexad
 defaultHash = DataHash([]);
 ```
 
-An additional option string selects the output format. Here, `short` returns unpadded Base64, while `HEX` returns uppercase hexadecimal for a nested data structure.
+The fourth argument selects the output format. Here, `short` returns unpadded Base64, while `HEX` returns uppercase hexadecimal for a nested data structure.
 
 ```matlab
-compactHash = DataHash(int32(1:10), 'MD5', 'short');
+compactHash = DataHash(int32(1:10), 'MD5', 'array', 'short');
 
 payload.a = uint8([]);
 payload.b = {{1:10}, struct('q', uint64(415))};
-nestedHash = DataHash(payload, 'SHA-1', 'HEX');
+nestedHash = DataHash(payload, 'SHA-1', 'array', 'HEX');
 ```
 
 Use `bin` when the digest should depend on the array's binary contents.
@@ -90,3 +90,16 @@ Starting with version 1.9.0, DataHash requires MATLAB R2019b or later and has no
 Release packages for version 1.9.0 and later also provide the optional `DataHashCore` MEX accelerator. It accelerates only the hashing core, while argument parsing and serialization remain in MATLAB. If a compatible MEX binary is unavailable, DataHash uses its native MATLAB implementation, preserving the portable single-file workflow without making platform-specific binaries mandatory.
 
 For older MATLAB releases, use v1.8.0, which requires Java and was tested on MATLAB R2009a, R2015b, R2016b, and R2018b.
+
+# Tests
+
+Run the correctness suites from the repository root:
+
+```matlab
+results = runtests('tests');
+assertSuccess(results);
+```
+
+The classes add the source folders temporarily and restore the MATLAB path when they finish. `DataHashLegacyCompatibilityTest` contains frozen compatibility checks for DataHash v1.8.0. `DataHashTest` contains current-interface checks and additional regression coverage; add new tests to this class. Both suites run without Java. Fixed-point cases require Fixed-Point Designer and report skips when it is unavailable. Performance tests remain separate under `tests/performance`.
+
+See [tests/README.md](tests/README.md) for suite coverage, reference versions, and compatibility limits.

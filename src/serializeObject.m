@@ -50,6 +50,11 @@ function data = serializeObject(value)
     if isa(value, 'embedded.fi')
         data = [header; serializeFixedPoint(value)];
     elseif isempty(value)
+        if ~(isnumeric(value) || islogical(value) || ischar(value) || ...
+                isstring(value) || isobject(value) || isa(value, 'function_handle'))
+            error('DataHash:UnsupportedType', ...
+                "Cannot serialize empty value of class '%s'.", class(value));
+        end
         data = header;
     elseif isnumeric(value)
         if isreal(value)
@@ -80,6 +85,11 @@ function data = serializeObject(value)
     elseif isobject(value) && ismethod(class(value), 'hashCode')
         data = [header; serializeObject(char(value.hashCode))];
     else
+        if ~isobject(value)
+            error('DataHash:UnsupportedType', ...
+                "Cannot serialize value of class '%s': only MATLAB objects are supported.", ...
+                class(value));
+        end
         try
             data = [header; serializeObject(convertObject(value))];
         catch exception

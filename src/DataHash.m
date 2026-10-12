@@ -3,12 +3,14 @@ function result = DataHash(data, method, inputType, outputFormat)
 %   RESULT = DATAHASH(DATA, METHOD, INPUTTYPE, OUTPUTFORMAT) calculates the
 %   requested digest. The optional arguments default to "MD5", "array",
 %   and "hex", respectively.
+%   Options are positional; only trailing arguments can be omitted.
 %
 %   DATAHASH() returns version information and the supported methods.
 
     arguments
         data = []
-        method = "MD5"
+        method (1, 1) string {mustBeOneOf(method, ...
+            ["MD2", "MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512"])} = "MD5"
         inputType (1, 1) string {mustBeOneOf(inputType, ...
             ["array", "file", "bin", "binary", "asc", "ascii"])} = "array"
         outputFormat (1, 1) string {mustBeOneOf(outputFormat, ...
@@ -23,14 +25,6 @@ function result = DataHash(data, method, inputType, outputFormat)
                         'Date', [2026, 9, 16], ...
                         'HashMethod', {{'MD2', 'MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'}});
         return;
-    end
-
-    if isstruct(method)
-        if nargin > 2
-            error("DataHash:InvalidOptions", ...
-                "An options structure cannot be combined with positional options.");
-        end
-        [method, inputType, outputFormat] = parseOptionsStruct(method);
     end
 
     [method, inputType, outputFormat] = parseFunctionInputs(data, method, inputType, outputFormat);
@@ -93,25 +87,13 @@ function [method, inputType, outputFormat] = parseFunctionInputs( ...
 % Handle abbrevations, uppercase/lowercase conversions and input-dependant
 % data format limitations
 
-    method = string(method);
-    if ~isscalar(method)
-        error("DataHash:InvalidOption", "Method must be a scalar string.");
-    end
     method = upper(method);
-    mustBeOneOf(method, ...
-        ["MD2", "MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512"]);
-    inputType = lower(string(inputType));
-    if ~isscalar(inputType)
-        error("DataHash:InvalidOption", ...
-            "Input type must be a scalar string.");
-    end
+    inputType = lower(inputType);
     if inputType == "binary"
         inputType = "bin";
     elseif inputType == "asc"
         inputType = "ascii";
     end
-    mustBeOneOf(inputType, ["array", "file", "bin", "ascii"]);
-
     if inputType == "bin"
         if ~(isnumeric(data) || ischar(data) || islogical(data) || ...
                 (isstring(data) && isscalar(data))) || issparse(data)
@@ -125,49 +107,11 @@ function [method, inputType, outputFormat] = parseFunctionInputs( ...
         end
     end
 
-    outputFormat = string(outputFormat);
-    if ~isscalar(outputFormat)
-        error("DataHash:InvalidOption", ...
-            "Output format must be a scalar string.");
-    end
-    mustBeOneOf(outputFormat, ...
-        ["hex", "double", "uint8", "base64", "short"]);
     if lower(outputFormat) == "hex" && startsWith(outputFormat, "H")
         outputFormat = "HEX";
     else
         outputFormat = lower(outputFormat);
     end
-end
-
-function [method, inputType, outputFormat] = parseOptionsStruct(options)
-% Parse the named options structure accepted by earlier DataHash versions.
-
-    if ~isscalar(options)
-        error("DataHash:InvalidOptions", ...
-            "The options structure must be scalar.");
-    end
-
-    method = "MD5";
-    inputType = "array";
-    outputFormat = "hex";
-    names = fieldnames(options);
-    for fieldIndex = 1:numel(names)
-        name = lower(string(names{fieldIndex}));
-        value = options.(names{fieldIndex});
-        if name == "method"
-            method = value;
-        elseif name == "input"
-            inputType = value;
-        elseif ismember(name, ["format", "outformat"])
-            outputFormat = value;
-        else
-            error("DataHash:InvalidOptions", ...
-                "Unknown option field '%s'.", names{fieldIndex});
-        end
-    end
-
-    inputType = string(inputType);
-    outputFormat = string(outputFormat);
 end
 
 function bytes = serializeBinary(value)
