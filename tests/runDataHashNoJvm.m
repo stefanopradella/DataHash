@@ -1,14 +1,26 @@
 % Run the maintained suites against source and standalone DataHash without Java.
-% Launch with -nojvm -batch and run this script by its absolute path.
+% Launch with -batch and run this script by its absolute path. Use -nojvm
+% when Java is available; omit it to check an unavailable Java runtime.
 % Builds in a temporary folder and restores path, folder, RNG, and open files.
 % Copyright (c) 2026, Stefano Pradella. See ../license.txt.
 
 runChecks(fileparts(fileparts(mfilename('fullpath'))));
 
 function runChecks(repositoryFolder)
-    assert(~usejava('jvm'), 'Start MATLAB with -nojvm before running this script.');
-    fprintf('MATLAB R%s | %s | JVM=%d\n', ...
-        version('-release'), computer, usejava('jvm'));
+    initialJvm = usejava('jvm');
+    if initialJvm
+        % Lazy initialization can report a JVM before detecting a missing JRE.
+        try
+            javaObject('java.lang.String', 'DataHash JVM availability probe');
+        catch exception
+            fprintf('Java initialization failed (%s): %s\n', ...
+                exception.identifier, exception.message);
+        end
+    end
+    assert(~usejava('jvm'), ...
+        'Java is available. Start MATLAB with -nojvm before running this script.');
+    fprintf('MATLAB R%s | %s | initial JVM=%d | JVM=%d\n', ...
+        version('-release'), computer, initialJvm, usejava('jvm'));
     originalPath = path;
     originalFolder = pwd;
     originalRng = rng;

@@ -37,6 +37,8 @@ matlab -nojvm -batch "run('/path/to/datahash/tests/runDataHashNoJvm.m')"
 
 Use the script's absolute path because MATLAB startup code can change the current folder. The runner reuses both maintained suites, verifies source and generated-file resolution, and checks essential stored vectors with source helpers absent from the path. It builds in a temporary folder, reports pass/fail/optional-skip counts, and checks path, folder, RNG, and file-handle cleanup. See step 1 in [../next_steps.md](../next_steps.md) for the recorded release results and launcher caveats.
 
+For an installation without a usable Java runtime, omit `-nojvm` from the command above. If `usejava('jvm')` initially reports true, the runner attempts to construct a Java string to trigger runtime initialization, then requires `usejava('jvm')` to be false before any DataHash checks. It prints the initialization error and both JVM flags. A functioning JVM causes the runner to stop and request `-nojvm`.
+
 # Frozen compatibility suite
 
 `DataHashLegacyCompatibilityTest.m` checks compatibility with DataHash v1.8.0. Preserve its inputs, expected results, seed, case count, and comparisons. Put subsequent features, regressions, and additional vectors in `DataHashTest.m`.
