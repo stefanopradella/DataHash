@@ -1,5 +1,5 @@
 classdef DataHashPerformanceTest < matlab.unittest.TestCase
-    % Speed check adapted from uTest_DataHash.m.
+    % Throughput checks with optional GetMD5 equivalence.
     % Copyright (c) 2009-2019, Jan Simon. See ../../license.txt.
 
     methods (TestClassSetup)
