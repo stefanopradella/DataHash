@@ -1,0 +1,23 @@
+function context = sha512Initialize()
+    %sha512Initialize - Create a native SHA-512 streaming context
+    %   CONTEXT = sha512Initialize() supplies the initial state, block length,
+    %   and native compression/finalization handles.
+    %
+    %   See also sha512Digest, sha512DigestFile, nativeDigestCore
+
+    % Copyright (c) 2026, Stefano Pradella. See ../../license.txt.
+
+    persistent initialState
+    if isempty(initialState)
+        initialHex = [ ...
+            '6a09e667f3bcc908'; 'bb67ae8584caa73b'; ...
+            '3c6ef372fe94f82b'; 'a54ff53a5f1d36f1'; ...
+            '510e527fade682d1'; '9b05688c2b3e6c1f'; ...
+            '1f83d9abfb41bd6b'; '5be0cd19137e2179'];
+        initialState = bitor(bitshift(uint64(hex2dec( ...
+            initialHex(:, 1:8))), 32), uint64(hex2dec(initialHex(:, 9:16))));
+    end
+    context = struct('state', initialState, 'totalLength', uint64(0), ...
+        'compress', @sha512Compress, 'finalize', @sha512Finalize, ...
+        'blockLength', 128);
+end

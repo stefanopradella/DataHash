@@ -29,26 +29,7 @@ function result = DataHash(data, method, inputType, outputFormat)
 
     [method, inputType, outputFormat] = parseFunctionInputs(data, method, inputType, outputFormat);
 
-    switch method
-        case "MD2"
-            digestFunction = @md2Digest;
-            fileDigestFunction = @md2DigestFile;
-        case "MD5"
-            digestFunction = @md5Digest;
-            fileDigestFunction = @md5DigestFile;
-        case "SHA-1"
-            digestFunction = @sha1Digest;
-            fileDigestFunction = @sha1DigestFile;
-        case "SHA-256"
-            digestFunction = @sha256Digest;
-            fileDigestFunction = @sha256DigestFile;
-        case "SHA-384"
-            digestFunction = @sha384Digest;
-            fileDigestFunction = @sha384DigestFile;
-        case "SHA-512"
-            digestFunction = @sha512Digest;
-            fileDigestFunction = @sha512DigestFile;
-    end
+    [digestFunction, fileDigestFunction] = getHashFunctions(method);
 
     if inputType == "file"
         digest = fileDigestFunction(data);

@@ -68,7 +68,11 @@ function runChecks(repositoryFolder)
         fprintf('\n%s: %s\n', label, which('DataHash'));
         testPath = path;
         testFolder = pwd;
-        results = runtests(testFiles);
+        suite = testsuite(testFiles);
+        if exist('DataHashCore', 'file') ~= 3
+            suite = suite.selectIf(~matlab.unittest.selectors.HasTag('MD5Accelerator'));
+        end
+        results = run(suite);
         fprintf('%s: %d passed, %d failed, %d incomplete\n', label, ...
             sum([results.Passed]), sum([results.Failed]), sum([results.Incomplete]));
         assert(strcmp(which('DataHash'), expectedFile), 'DataHash resolution changed.');

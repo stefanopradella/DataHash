@@ -1,0 +1,23 @@
+function context = sha384Initialize()
+    %sha384Initialize - Create a native SHA-384 streaming context
+    %   CONTEXT = sha384Initialize() supplies the initial state, block length,
+    %   and native compression/finalization handles.
+    %
+    %   See also sha384Digest, sha384DigestFile, nativeDigestCore
+
+    % Copyright (c) 2026, Stefano Pradella. See ../../license.txt.
+
+    persistent initialState
+    if isempty(initialState)
+        initialHex = [ ...
+            'cbbb9d5dc1059ed8'; '629a292a367cd507'; ...
+            '9159015a3070dd17'; '152fecd8f70e5939'; ...
+            '67332667ffc00b31'; '8eb44a8768581511'; ...
+            'db0c2e0d64f98fa7'; '47b5481dbefa4fa4'];
+        initialState = bitor(bitshift(uint64(hex2dec( ...
+            initialHex(:, 1:8))), 32), uint64(hex2dec(initialHex(:, 9:16))));
+    end
+    context = struct('state', initialState, 'totalLength', uint64(0), ...
+        'compress', @sha512Compress, 'finalize', @(state, tail, totalLength) ...
+        sha512Finalize(state, tail, totalLength, 48), 'blockLength', 128);
+end

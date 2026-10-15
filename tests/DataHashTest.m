@@ -19,6 +19,11 @@ classdef DataHashTest < matlab.unittest.TestCase
         invalidAsciiData = invalidAsciiInputs()
         invalidArgumentCase = invalidArgumentCases()
         emptyBinaryData = emptyBinaryInputs()
+        md5CoreCase = md5CoreCases()
+        md5CoreSplit = {0, 1, 55, 56, 63, 64, 65, 127, 128, 129, 256, 257}
+        invalidCoreCase = invalidCoreCases()
+        unavailableCore = {'matlabFile', 'invalidBinary'}
+        coreFailureLength = {0, 3, 2^20}
         method = {'MD2', 'MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'}
     end
 
@@ -31,6 +36,43 @@ classdef DataHashTest < matlab.unittest.TestCase
     end
 
     methods (Test)
+        function nativeFileEntryPoint(testCase, digestCase)
+            fileName = testCase.writeTemporaryFile(digestCase.data);
+            functionName = [lower(strrep(digestCase.method, '-', '')), 'DigestFile'];
+            fileDigestFunction = str2func(functionName);
+
+            digest = fileDigestFunction(fileName);
+
+            testCase.verifyEqual(sprintf('%.2x', digest), digestCase.expected);
+            testCase.verifyClass(digest, 'uint8');
+            testCase.verifySize(digest, [1, numel(digest)]);
+        end
+
+        function sharedFileCoreErrorClosesFile(testCase, coreFailureLength)
+            fileName = testCase.writeTemporaryFile(zeros(coreFailureLength, 1, 'uint8'));
+            originalFiles = testCase.trackOpenFiles();
+
+            testCase.verifyError(@() digestFile(fileName, @failFileCore, []), ...
+                'DataHashTest:InjectedCoreFailure');
+
+            testCase.verifyEqual(openFiles(), originalFiles);
+        end
+
+        function acceleratorUnavailable(testCase, unavailableCore)
+            hashFunction = @DataHash;
+            fileName = testCase.writeTemporaryFile(uint8('abc'));
+            originalFiles = testCase.trackOpenFiles();
+            testCase.hideAccelerator(unavailableCore);
+
+            testCase.verifyWarningFree(@() hashFunction('abc', 'MD5', 'ascii'));
+            actual = hashFunction(uint8('abc'), 'MD5', 'bin');
+            fileHash = hashFunction(fileName, 'MD5', 'file');
+
+            testCase.verifyEqual(actual, '900150983cd24fb0d6963f7d28e17f72');
+            testCase.verifyEqual(fileHash, actual);
+            testCase.verifyEqual(openFiles(), originalFiles);
+        end
+
         function digestCompatibility(testCase, digestCase)
             actual = DataHash(digestCase.data, digestCase.method, 'bin');
             testCase.verifyEqual(actual, digestCase.expected, digestCase.label);
@@ -159,6 +201,60 @@ classdef DataHashTest < matlab.unittest.TestCase
         end
     end
 
+    methods (Test, TestTags = {'MD5Accelerator'})
+        function acceleratorKnownAnswer(testCase, md5CoreCase)
+            testCase.requireAccelerator();
+
+            actual = DataHashCore(md5CoreCase.data, uint8(5));
+            column = DataHashCore(md5CoreCase.data(:), uint8(5));
+
+            testCase.verifyEqual(sprintf('%.2x', actual), md5CoreCase.expected);
+            testCase.verifyEqual(column, actual);
+            testCase.verifyClass(actual, 'uint8');
+            testCase.verifySize(actual, [1, 16]);
+        end
+
+        function acceleratorStreamingPartitions(testCase, md5CoreSplit)
+            testCase.requireAccelerator();
+            data = uint8(mod(0:256, 256));
+            context = DataHashCore(data(1:md5CoreSplit), uint8(5), ...
+                uint8([]), uint8(0));
+            savedContext = context;
+
+            updated = DataHashCore(uint8([]), uint8(5), context, uint8(0));
+            digest = DataHashCore(data(md5CoreSplit + 1:end), ...
+                uint8(5), updated, uint8(1));
+            repeated = DataHashCore(data(md5CoreSplit + 1:end), ...
+                uint8(5), context, uint8(1));
+
+            testCase.verifyEqual(sprintf('%.2x', digest), ...
+                'd42685433727eed453d0c4cb52ff6541');
+            testCase.verifyEqual(repeated, digest);
+            testCase.verifyEqual(updated, savedContext);
+            testCase.verifyEqual(context, savedContext);
+            testCase.verifyClass(context, 'uint8');
+            testCase.verifySize(context, [1, 96]);
+        end
+
+        function acceleratorInvalidInput(testCase, invalidCoreCase)
+            testCase.requireAccelerator();
+            testCase.verifyError(@() callCore(invalidCoreCase.inputs), ...
+                invalidCoreCase.errorId);
+        end
+
+        function acceleratorRejectsNoOutput(testCase)
+            testCase.requireAccelerator();
+            testCase.verifyError(@() callCoreWithoutOutput(), ...
+                'DataHashCore:OutputCount');
+        end
+
+        function acceleratorRejectsExtraOutput(testCase)
+            testCase.requireAccelerator();
+            testCase.verifyError(@() callCoreWithTwoOutputs(), ...
+                'DataHashCore:OutputCount');
+        end
+    end
+
     methods (Test, TestTags = {'FileStreaming'})
         function fileStreamingBoundaries(testCase, streamingCase)
             byteIndex = 0:(streamingCase.length - 1);
@@ -178,6 +274,33 @@ classdef DataHashTest < matlab.unittest.TestCase
     end
 
     methods (Access = private)
+        function requireAccelerator(testCase)
+            testCase.assumeEqual(exist('DataHashCore', 'file'), 3, ...
+                'Optional MD5 MEX not found. Run buildDataHashMex first.');
+        end
+
+        function hideAccelerator(testCase, kind)
+            folder = testCase.applyFixture( ...
+                matlab.unittest.fixtures.TemporaryFolderFixture);
+            if strcmp(kind, 'matlabFile')
+                fileName = 'DataHashCore.m';
+                contents = sprintf(['function result = DataHashCore(varargin)\n', ...
+                    'error(''DataHashTest:UnexpectedCore'', ''Must use native MD5.'');\n', ...
+                    'end\n']);
+            else
+                fileName = ['DataHashCore.', mexext];
+                contents = 'An unavailable accelerator must fall back silently.';
+            end
+            [fileId, message] = fopen(fullfile(folder.Folder, fileName), 'wb');
+            testCase.assertNotEqual(fileId, -1, message);
+            cleanup = onCleanup(@() fclose(fileId));
+            testCase.assertEqual(fwrite(fileId, uint8(contents), 'uint8'), numel(contents));
+            clear cleanup DataHashCore;
+            testCase.addTeardown(@() clearCore());
+            testCase.applyFixture(matlab.unittest.fixtures.CurrentFolderFixture(folder.Folder));
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(folder.Folder));
+        end
+
         function fileName = writeTemporaryFile(testCase, data, name)
             if nargin < 3
                 name = 'input.bin';
@@ -226,6 +349,72 @@ function closeNewFiles(originalFiles)
     leakedFiles = setdiff(openFiles(), originalFiles);
     for fileIndex = 1:numel(leakedFiles)
         fclose(leakedFiles(fileIndex));
+    end
+end
+
+function result = failFileCore(varargin) %#ok<STOUT>
+    % Accept one output so the injected core error reaches the file reader.
+    error('DataHashTest:InjectedCoreFailure', 'Injected hashing core failure.');
+end
+
+function result = callCore(inputs)
+    result = DataHashCore(inputs{:});
+end
+
+function callCoreWithoutOutput()
+    DataHashCore(uint8([]), uint8(5));
+end
+
+function callCoreWithTwoOutputs()
+    [~, ~] = DataHashCore(uint8([]), uint8(5));
+end
+
+function clearCore()
+    clear DataHashCore;
+end
+
+function namedCases = md5CoreCases()
+    allCases = digestCases();
+    names = fieldnames(allCases);
+    namedCases = rmfield(allCases, names(~startsWith(names, 'md5')));
+    allCases = boundaryCases();
+    names = fieldnames(allCases);
+    for caseIndex = 1:numel(names)
+        name = names{caseIndex};
+        if startsWith(name, 'md5')
+            boundary = allCases.(name);
+            namedCases.(name) = struct('data', uint8(0:boundary.length - 1), ...
+                'expected', boundary.expected);
+        end
+    end
+end
+
+function namedCases = invalidCoreCases()
+    empty = uint8([]);
+    cases = { ...
+        'noInputs', {}, 'ArgumentCount'; ...
+        'oneInput', {empty}, 'ArgumentCount'; ...
+        'threeInputs', {empty, uint8(5), empty}, 'ArgumentCount'; ...
+        'doubleBytes', {double('abc'), uint8(5)}, 'InvalidBytes'; ...
+        'matrixBytes', {zeros(2, 2, 'uint8'), uint8(5)}, 'InvalidBytes'; ...
+        'ndBytes', {zeros(1, 1, 2, 'uint8'), uint8(5)}, 'InvalidBytes'; ...
+        'sparseBytes', {sparse(1), uint8(5)}, 'InvalidBytes'; ...
+        'doubleMethod', {empty, 5}, 'InvalidMethod'; ...
+        'unsupportedMethod', {empty, uint8(2)}, 'InvalidMethod'; ...
+        'emptyMethod', {empty, empty}, 'InvalidMethod'; ...
+        'vectorMethod', {empty, uint8([5, 5])}, 'InvalidMethod'; ...
+        'doubleContext', {empty, uint8(5), [], uint8(0)}, 'InvalidContext'; ...
+        'shortContext', {empty, uint8(5), uint8(0), uint8(0)}, 'InvalidContext'; ...
+        'wrongVersion', {empty, uint8(5), zeros(1, 96, 'uint8'), uint8(0)}, 'InvalidContext'; ...
+        'doubleOperation', {empty, uint8(5), empty, 0}, 'InvalidOperation'; ...
+        'unknownOperation', {empty, uint8(5), empty, uint8(2)}, 'InvalidOperation'; ...
+        'emptyOperation', {empty, uint8(5), empty, empty}, 'InvalidOperation'; ...
+    };
+    namedCases = struct;
+    for caseIndex = 1:size(cases, 1)
+        namedCases.(cases{caseIndex, 1}) = struct( ...
+            'inputs', cases(caseIndex, 2), ...
+            'errorId', ['DataHashCore:', cases{caseIndex, 3}]);
     end
 end
 
