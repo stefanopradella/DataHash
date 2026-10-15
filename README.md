@@ -10,7 +10,13 @@ Put `DataHash.m` in the current MATLAB folder or add this repository to the MATL
 hash = DataHash(data, method, inputType, outputFormat)
 ```
 
-Options must be supplied in the order shown, as character vectors or scalar strings. Only trailing arguments can be omitted. By default, `method` is `MD5`, `inputType` is `array`, and `outputFormat` is lowercase `hex`. To select an output format, supply the method and input type too. Legacy options structures are no longer accepted.
+Positional options must be supplied in the order shown, as character vectors or scalar strings. Only trailing positional arguments can be omitted. By default, `method` is `MD5`, `inputType` is `array`, and `outputFormat` is lowercase `hex`. To select an output format, supply the method and input type too. Legacy options structures are no longer accepted.
+
+Append the optional name-value argument `'ForceNative', true` to use the native MATLAB implementation even when a compatible MEX accelerator is present. It accepts a logical scalar or numeric `0` or `1` and defaults to `false`, allowing automatic accelerator selection. This calling syntax supports MATLAB R2019b and later.
+
+```matlab
+hash = DataHash('logo.png', 'MD5', 'file', 'ForceNative', true);
+```
 
 Supported data types for `data` with `array` input:
 

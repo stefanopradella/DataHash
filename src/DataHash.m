@@ -1,20 +1,27 @@
-function result = DataHash(data, method, inputType, outputFormat)
+function result = DataHash(data, method, inputType, outputFormat, options)
 %DATAHASH Calculate a hash for MATLAB data or a file.
 %   RESULT = DATAHASH(DATA, METHOD, INPUTTYPE, OUTPUTFORMAT) calculates the
 %   requested digest. The optional arguments default to "MD5", "array",
 %   and "hex", respectively.
-%   Options are positional; only trailing arguments can be omitted.
+%   Method, input type, and output format are positional. Only trailing
+%   positional arguments can be omitted.
+%
+%   RESULT = DATAHASH(..., 'ForceNative', true) uses native MATLAB hashing
+%   even when a compatible MEX accelerator is available. ForceNative accepts
+%   a logical scalar or numeric 0 or 1 and defaults to false.
 %
 %   DATAHASH() returns version information and the supported methods.
 
     arguments
         data = []
         method (1, 1) string {mustBeOneOf(method, ...
-            ["MD2", "MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512"])} = "MD5"
+            ["MD2", "MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512"])}      = "MD5"
         inputType (1, 1) string {mustBeOneOf(inputType, ...
-            ["array", "file", "bin", "binary", "asc", "ascii"])} = "array"
+            ["array", "file", "bin", "binary", "asc", "ascii"])}            = "array"
         outputFormat (1, 1) string {mustBeOneOf(outputFormat, ...
-            ["hex", "double", "uint8", "base64", "short"])} = "hex"
+            ["hex", "double", "uint8", "base64", "short"])}                 = "hex"
+        options.ForceNative (1, 1) {mustBeNumericOrLogical, ...
+            mustBeMember(options.ForceNative, [0, 1])}                      = false
     end
 
     if nargin == 0
@@ -29,7 +36,7 @@ function result = DataHash(data, method, inputType, outputFormat)
 
     [method, inputType, outputFormat] = parseFunctionInputs(data, method, inputType, outputFormat);
 
-    [digestFunction, fileDigestFunction] = getHashFunctions(method);
+    [digestFunction, fileDigestFunction] = getHashFunctions(method, ~options.ForceNative);
 
     if inputType == "file"
         digest = fileDigestFunction(data);

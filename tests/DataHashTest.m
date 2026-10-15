@@ -24,6 +24,8 @@ classdef DataHashTest < matlab.unittest.TestCase
         invalidCoreCase = invalidCoreCases()
         unavailableCore = {'matlabFile', 'invalidBinary'}
         coreFailureLength = {0, 3, 2^20}
+        nativeFlagValue = {false, true, 0, 1}
+        invalidNativeFlag = {2, -1, NaN, Inf, 1i, 'true', [false, true], [], {true}}
         method = {'MD2', 'MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'}
     end
 
@@ -36,6 +38,62 @@ classdef DataHashTest < matlab.unittest.TestCase
     end
 
     methods (Test)
+        function forceNativeDigestCompatibility(testCase, digestCase)
+            actual = DataHash(digestCase.data, digestCase.method, 'bin', ...
+                'ForceNative', true);
+            testCase.verifyEqual(actual, digestCase.expected);
+        end
+
+        function forceNativeOutputKnownAnswer(testCase, outputCase)
+            actual = DataHash(outputCase.data, outputCase.options{:}, ...
+                'ForceNative', true);
+            testCase.verifyEqual(actual, outputCase.expected);
+        end
+
+        function forceNativeTrailingDefaults(testCase, defaultCase)
+            data = uint8('abc');
+            actual = DataHash(data, defaultCase.options{:}, 'ForceNative', true);
+            expected = DataHash(data, defaultCase.explicitOptions{:});
+            testCase.verifyEqual(actual, expected);
+        end
+
+        function forceNativeFlagValues(testCase, nativeFlagValue)
+            actual = DataHash('abc', 'MD5', 'ascii', 'ForceNative', nativeFlagValue);
+            testCase.verifyEqual(actual, '900150983cd24fb0d6963f7d28e17f72');
+        end
+
+        function forceNativeInvalidFlag(testCase, invalidNativeFlag)
+            testCase.verifyThat(@() DataHash([], 'ForceNative', invalidNativeFlag), ...
+                matlab.unittest.constraints.Throws(?MException));
+        end
+
+        function forceNativeMemoryBypassesAccelerator(testCase)
+            hashFunction = @DataHash;
+            testCase.installFailingAccelerator();
+            testCase.verifyError(@() hashFunction('abc', 'MD5', 'ascii'), ...
+                'DataHashTest:AcceleratorCalled');
+            testCase.verifyError(@() hashFunction('abc', 'MD5', 'ascii', ...
+                'ForceNative', false), 'DataHashTest:AcceleratorCalled');
+
+            actual = hashFunction('abc', 'MD5', 'ascii', 'ForceNative', true);
+
+            testCase.verifyEqual(actual, '900150983cd24fb0d6963f7d28e17f72');
+        end
+
+        function forceNativeFileBypassesAccelerator(testCase)
+            hashFunction = @DataHash;
+            fileName = testCase.writeTemporaryFile(uint8('abc'));
+            originalFiles = testCase.trackOpenFiles();
+            testCase.installFailingAccelerator();
+            testCase.verifyError(@() hashFunction(fileName, 'MD5', 'file'), ...
+                'DataHashTest:AcceleratorCalled');
+
+            actual = hashFunction(fileName, 'MD5', 'file', 'ForceNative', 1);
+
+            testCase.verifyEqual(actual, '900150983cd24fb0d6963f7d28e17f72');
+            testCase.verifyEqual(openFiles(), originalFiles);
+        end
+
         function nativeFileEntryPoint(testCase, digestCase)
             fileName = testCase.writeTemporaryFile(digestCase.data);
             functionName = [lower(strrep(digestCase.method, '-', '')), 'DigestFile'];
@@ -274,6 +332,34 @@ classdef DataHashTest < matlab.unittest.TestCase
     end
 
     methods (Access = private)
+        function installFailingAccelerator(testCase)
+            testCase.assumeNotEmpty(mex.getCompilerConfigurations('C', 'Selected'), ...
+                'A configured C compiler is required for accelerator-selection checks.');
+            folder = testCase.applyFixture( ...
+                matlab.unittest.fixtures.TemporaryFolderFixture);
+            % Pass the empty-input compatibility probes, then signal actual use.
+            contents = sprintf([ ...
+                '#include "mex.h"\n#include <string.h>\n', ...
+                'void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {\n', ...
+                '  const unsigned char empty[16] = {212,29,140,217,143,0,178,4,233,128,9,152,236,248,66,126};\n', ...
+                '  int update = nrhs == 4 && *((unsigned char *)mxGetData(prhs[3])) == 0;\n', ...
+                '  if (mxGetNumberOfElements(prhs[0]) != 0)\n', ...
+                '    mexErrMsgIdAndTxt("DataHashTest:AcceleratorCalled", "Accelerator selected.");\n', ...
+                '  plhs[0] = mxCreateNumericMatrix(1, update ? 96 : 16, mxUINT8_CLASS, mxREAL);\n', ...
+                '  if (!update) memcpy(mxGetData(plhs[0]), empty, 16);\n', ...
+                '}\n']);
+            sourceFile = fullfile(folder.Folder, 'DataHashCore.c');
+            [fileId, message] = fopen(sourceFile, 'wb');
+            testCase.assertNotEqual(fileId, -1, message);
+            cleanup = onCleanup(@() fclose(fileId));
+            testCase.assertEqual(fwrite(fileId, uint8(contents), 'uint8'), numel(contents));
+            clear cleanup DataHashCore;
+            mex('-R2018a', '-O', '-outdir', folder.Folder, sourceFile);
+            testCase.addTeardown(@() clearCore());
+            testCase.applyFixture(matlab.unittest.fixtures.CurrentFolderFixture(folder.Folder));
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(folder.Folder));
+        end
+
         function requireAccelerator(testCase)
             testCase.assumeEqual(exist('DataHashCore', 'file'), 3, ...
                 'Optional MD5 MEX not found. Run buildDataHashMex first.');
