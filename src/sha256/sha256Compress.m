@@ -28,74 +28,217 @@ function state = sha256Compress(state, blocks)
         constants = uint32(hex2dec(constantHex));
     end
 
-    messageWords = uint32(16777216 * double(blocks(1:4:end, :)) + ...
-        65536 * double(blocks(2:4:end, :)) + ...
-        256 * double(blocks(3:4:end, :)) + ...
-        double(blocks(4:4:end, :)));
-    wordMask = uint64(4294967295);
+    persistent isLittleEndian
+    if isempty(isLittleEndian)
+        [~, ~, endianness] = computer;
+        isLittleEndian = endianness == 'L';
+    end
 
-    for blockIndex = 1:size(messageWords, 2)
-        words = zeros(64, 1, 'uint32');
-        words(1:16) = messageWords(:, blockIndex);
+    % Decode big-endian message words directly, including on big-endian hosts.
+    messageWords = reshape(typecast(blocks(:), 'uint32'), 16, []);
+    if isLittleEndian
+        messageWords = swapbytes(messageWords);
+    end
+
+    % All partial sums are below 2^35 and exactly representable in
+    % double. Reduce before the saturating uint32 conversion.
+    a = state(1);
+    b = state(2);
+    c = state(3);
+    d = state(4);
+    e = state(5);
+    f = state(6);
+    g = state(7);
+    h = state(8);
+    % Batch independent schedules in at most 256 KiB of uint32 storage.
+    for batchStart = 1:1024:size(messageWords, 2)
+        batchEnd = min(batchStart + 1023, size(messageWords, 2));
+        batchCount = batchEnd - batchStart + 1;
+        words = zeros(64, batchCount, 'uint32');
+        words(1:16, :) = messageWords(:, batchStart:batchEnd);
+        % Constant words remain exact when promoted for the round sum.
         for wordIndex = 17:64
-            previous = words(wordIndex - 15);
+            previous = words(wordIndex - 15, :);
             sigma0 = bitxor(bitxor( ...
                 bitor(bitshift(previous, -7), bitshift(previous, 25)), ...
                 bitor(bitshift(previous, -18), bitshift(previous, 14))), ...
                 bitshift(previous, -3));
-            previous = words(wordIndex - 2);
+            previous = words(wordIndex - 2, :);
             sigma1 = bitxor(bitxor( ...
                 bitor(bitshift(previous, -17), bitshift(previous, 15)), ...
                 bitor(bitshift(previous, -19), bitshift(previous, 13))), ...
                 bitshift(previous, -10));
-            sumValue = uint64(words(wordIndex - 16)) + uint64(sigma0) + ...
-                uint64(words(wordIndex - 7)) + uint64(sigma1);
-            words(wordIndex) = uint32(bitand(sumValue, wordMask));
+            sumValue = double(words(wordIndex - 16, :)) + double(sigma0) + ...
+                double(words(wordIndex - 7, :)) + double(sigma1);
+            words(wordIndex, :) = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
         end
 
-        a = state(1);
-        b = state(2);
-        c = state(3);
-        d = state(4);
-        e = state(5);
-        f = state(6);
-        g = state(7);
-        h = state(8);
+        for blockIndex = 1:batchCount
+            startA = a;
+            startB = b;
+            startC = c;
+            startD = d;
+            startE = e;
+            startF = f;
+            startG = g;
+            startH = h;
+            % Eight rounds eliminate the register shuffles between rounds.
+            for roundIndex = 1:8:64
+                sigma1 = bitxor(bitxor( ...
+                    bitor(bitshift(e, -6), bitshift(e, 26)), ...
+                    bitor(bitshift(e, -11), bitshift(e, 21))), ...
+                    bitor(bitshift(e, -25), bitshift(e, 7)));
+                choice = bitxor(g, bitand(e, bitxor(f, g)));
+                temporary1 = double(h) + double(sigma1) + double(choice) + ...
+                    double(constants(roundIndex)) + double(words(roundIndex, blockIndex));
+                sigma0 = bitxor(bitxor( ...
+                    bitor(bitshift(a, -2), bitshift(a, 30)), ...
+                    bitor(bitshift(a, -13), bitshift(a, 19))), ...
+                    bitor(bitshift(a, -22), bitshift(a, 10)));
+                majority = bitxor(bitand(a, b), bitand(c, bitxor(a, b)));
+                sumValue = double(d) + temporary1;
+                d = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+                sumValue = temporary1 + double(sigma0) + double(majority);
+                h = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
 
-        for roundIndex = 1:64
-            sigma1 = bitxor(bitxor( ...
-                bitor(bitshift(e, -6), bitshift(e, 26)), ...
-                bitor(bitshift(e, -11), bitshift(e, 21))), ...
-                bitor(bitshift(e, -25), bitshift(e, 7)));
-            choice = bitxor(g, bitand(e, bitxor(f, g)));
-            sumValue = uint64(h) + uint64(sigma1) + uint64(choice) + ...
-                uint64(constants(roundIndex)) + uint64(words(roundIndex));
-            temporary1 = uint32(bitand(sumValue, wordMask));
+                sigma1 = bitxor(bitxor( ...
+                    bitor(bitshift(d, -6), bitshift(d, 26)), ...
+                    bitor(bitshift(d, -11), bitshift(d, 21))), ...
+                    bitor(bitshift(d, -25), bitshift(d, 7)));
+                choice = bitxor(f, bitand(d, bitxor(e, f)));
+                temporary1 = double(g) + double(sigma1) + double(choice) + ...
+                    double(constants(roundIndex + 1)) + double(words(roundIndex + 1, blockIndex));
+                sigma0 = bitxor(bitxor( ...
+                    bitor(bitshift(h, -2), bitshift(h, 30)), ...
+                    bitor(bitshift(h, -13), bitshift(h, 19))), ...
+                    bitor(bitshift(h, -22), bitshift(h, 10)));
+                majority = bitxor(bitand(h, a), bitand(b, bitxor(h, a)));
+                sumValue = double(c) + temporary1;
+                c = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+                sumValue = temporary1 + double(sigma0) + double(majority);
+                g = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
 
-            sigma0 = bitxor(bitxor( ...
-                bitor(bitshift(a, -2), bitshift(a, 30)), ...
-                bitor(bitshift(a, -13), bitshift(a, 19))), ...
-                bitor(bitshift(a, -22), bitshift(a, 10)));
-            majority = bitxor(bitand(a, b), bitand(c, bitxor(a, b)));
-            temporary2 = uint32(bitand(uint64(sigma0) + ...
-                uint64(majority), wordMask));
+                sigma1 = bitxor(bitxor( ...
+                    bitor(bitshift(c, -6), bitshift(c, 26)), ...
+                    bitor(bitshift(c, -11), bitshift(c, 21))), ...
+                    bitor(bitshift(c, -25), bitshift(c, 7)));
+                choice = bitxor(e, bitand(c, bitxor(d, e)));
+                temporary1 = double(f) + double(sigma1) + double(choice) + ...
+                    double(constants(roundIndex + 2)) + double(words(roundIndex + 2, blockIndex));
+                sigma0 = bitxor(bitxor( ...
+                    bitor(bitshift(g, -2), bitshift(g, 30)), ...
+                    bitor(bitshift(g, -13), bitshift(g, 19))), ...
+                    bitor(bitshift(g, -22), bitshift(g, 10)));
+                majority = bitxor(bitand(g, h), bitand(a, bitxor(g, h)));
+                sumValue = double(b) + temporary1;
+                b = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+                sumValue = temporary1 + double(sigma0) + double(majority);
+                f = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
 
-            h = g;
-            g = f;
-            f = e;
-            e = uint32(bitand(uint64(d) + uint64(temporary1), wordMask));
-            d = c;
-            c = b;
-            b = a;
-            a = uint32(bitand(uint64(temporary1) + ...
-                uint64(temporary2), wordMask));
-        end
+                sigma1 = bitxor(bitxor( ...
+                    bitor(bitshift(b, -6), bitshift(b, 26)), ...
+                    bitor(bitshift(b, -11), bitshift(b, 21))), ...
+                    bitor(bitshift(b, -25), bitshift(b, 7)));
+                choice = bitxor(d, bitand(b, bitxor(c, d)));
+                temporary1 = double(e) + double(sigma1) + double(choice) + ...
+                    double(constants(roundIndex + 3)) + double(words(roundIndex + 3, blockIndex));
+                sigma0 = bitxor(bitxor( ...
+                    bitor(bitshift(f, -2), bitshift(f, 30)), ...
+                    bitor(bitshift(f, -13), bitshift(f, 19))), ...
+                    bitor(bitshift(f, -22), bitshift(f, 10)));
+                majority = bitxor(bitand(f, g), bitand(h, bitxor(f, g)));
+                sumValue = double(a) + temporary1;
+                a = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+                sumValue = temporary1 + double(sigma0) + double(majority);
+                e = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
 
-        workingState = [a; b; c; d; e; f; g; h];
-        for wordIndex = 1:8
-            sumValue = uint64(state(wordIndex)) + ...
-                uint64(workingState(wordIndex));
-            state(wordIndex) = uint32(bitand(sumValue, wordMask));
+                sigma1 = bitxor(bitxor( ...
+                    bitor(bitshift(a, -6), bitshift(a, 26)), ...
+                    bitor(bitshift(a, -11), bitshift(a, 21))), ...
+                    bitor(bitshift(a, -25), bitshift(a, 7)));
+                choice = bitxor(c, bitand(a, bitxor(b, c)));
+                temporary1 = double(d) + double(sigma1) + double(choice) + ...
+                    double(constants(roundIndex + 4)) + double(words(roundIndex + 4, blockIndex));
+                sigma0 = bitxor(bitxor( ...
+                    bitor(bitshift(e, -2), bitshift(e, 30)), ...
+                    bitor(bitshift(e, -13), bitshift(e, 19))), ...
+                    bitor(bitshift(e, -22), bitshift(e, 10)));
+                majority = bitxor(bitand(e, f), bitand(g, bitxor(e, f)));
+                sumValue = double(h) + temporary1;
+                h = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+                sumValue = temporary1 + double(sigma0) + double(majority);
+                d = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+
+                sigma1 = bitxor(bitxor( ...
+                    bitor(bitshift(h, -6), bitshift(h, 26)), ...
+                    bitor(bitshift(h, -11), bitshift(h, 21))), ...
+                    bitor(bitshift(h, -25), bitshift(h, 7)));
+                choice = bitxor(b, bitand(h, bitxor(a, b)));
+                temporary1 = double(c) + double(sigma1) + double(choice) + ...
+                    double(constants(roundIndex + 5)) + double(words(roundIndex + 5, blockIndex));
+                sigma0 = bitxor(bitxor( ...
+                    bitor(bitshift(d, -2), bitshift(d, 30)), ...
+                    bitor(bitshift(d, -13), bitshift(d, 19))), ...
+                    bitor(bitshift(d, -22), bitshift(d, 10)));
+                majority = bitxor(bitand(d, e), bitand(f, bitxor(d, e)));
+                sumValue = double(g) + temporary1;
+                g = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+                sumValue = temporary1 + double(sigma0) + double(majority);
+                c = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+
+                sigma1 = bitxor(bitxor( ...
+                    bitor(bitshift(g, -6), bitshift(g, 26)), ...
+                    bitor(bitshift(g, -11), bitshift(g, 21))), ...
+                    bitor(bitshift(g, -25), bitshift(g, 7)));
+                choice = bitxor(a, bitand(g, bitxor(h, a)));
+                temporary1 = double(b) + double(sigma1) + double(choice) + ...
+                    double(constants(roundIndex + 6)) + double(words(roundIndex + 6, blockIndex));
+                sigma0 = bitxor(bitxor( ...
+                    bitor(bitshift(c, -2), bitshift(c, 30)), ...
+                    bitor(bitshift(c, -13), bitshift(c, 19))), ...
+                    bitor(bitshift(c, -22), bitshift(c, 10)));
+                majority = bitxor(bitand(c, d), bitand(e, bitxor(c, d)));
+                sumValue = double(f) + temporary1;
+                f = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+                sumValue = temporary1 + double(sigma0) + double(majority);
+                b = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+
+                sigma1 = bitxor(bitxor( ...
+                    bitor(bitshift(f, -6), bitshift(f, 26)), ...
+                    bitor(bitshift(f, -11), bitshift(f, 21))), ...
+                    bitor(bitshift(f, -25), bitshift(f, 7)));
+                choice = bitxor(h, bitand(f, bitxor(g, h)));
+                temporary1 = double(a) + double(sigma1) + double(choice) + ...
+                    double(constants(roundIndex + 7)) + double(words(roundIndex + 7, blockIndex));
+                sigma0 = bitxor(bitxor( ...
+                    bitor(bitshift(b, -2), bitshift(b, 30)), ...
+                    bitor(bitshift(b, -13), bitshift(b, 19))), ...
+                    bitor(bitshift(b, -22), bitshift(b, 10)));
+                majority = bitxor(bitand(b, c), bitand(d, bitxor(b, c)));
+                sumValue = double(e) + temporary1;
+                e = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+                sumValue = temporary1 + double(sigma0) + double(majority);
+                a = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+
+            end
+
+            sumValue = double(startA) + double(a);
+            a = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+            sumValue = double(startB) + double(b);
+            b = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+            sumValue = double(startC) + double(c);
+            c = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+            sumValue = double(startD) + double(d);
+            d = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+            sumValue = double(startE) + double(e);
+            e = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+            sumValue = double(startF) + double(f);
+            f = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+            sumValue = double(startG) + double(g);
+            g = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
+            sumValue = double(startH) + double(h);
+            h = uint32(sumValue - 4294967296 * fix(sumValue * 2^-32));
         end
     end
+    state = [a; b; c; d; e; f; g; h];
 end

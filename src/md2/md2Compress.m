@@ -9,7 +9,7 @@ function [state, checksum] = md2Compress(state, checksum, blocks)
 
     persistent substitution
     if isempty(substitution)
-        substitution = uint8([ ...
+        substitution = uint16([ ...
             41, 46, 67, 201, 162, 216, 124, 1, 61, 54, 84, 161, 236, 240, 6, 19, ...
             98, 167, 5, 243, 192, 199, 115, 140, 152, 147, 43, 217, 188, 76, 130, 202, ...
             30, 155, 87, 60, 253, 212, 224, 22, 103, 66, 111, 24, 138, 23, 229, 18, ...
@@ -28,12 +28,15 @@ function [state, checksum] = md2Compress(state, checksum, blocks)
             68, 80, 180, 143, 237, 31, 26, 219, 153, 141, 51, 159, 17, 131, 20]);
     end
 
+    % uint16 holds lookup index 256 and round sums up to 272 without
+    % saturating. Keep the public state and checksum as uint8 bytes.
+    state = uint16(state);
+    checksum = uint16(checksum);
     for blockIndex = 1:size(blocks, 2)
-        block = blocks(:, blockIndex);
+        block = uint16(blocks(:, blockIndex));
         lastChecksum = checksum(16);
         for byteIndex = 1:16
-            substitutionIndex = double(bitxor(block(byteIndex), ...
-                lastChecksum)) + 1;
+            substitutionIndex = bitxor(block(byteIndex), lastChecksum) + 1;
             checksum(byteIndex) = bitxor(checksum(byteIndex), ...
                 substitution(substitutionIndex));
             lastChecksum = checksum(byteIndex);
@@ -41,14 +44,22 @@ function [state, checksum] = md2Compress(state, checksum, blocks)
 
         state(17:32) = block;
         state(33:48) = bitxor(state(1:16), block);
-        temporary = uint8(0);
+        temporary = uint16(0);
         for roundIndex = 0:17
-            for byteIndex = 1:48
-                state(byteIndex) = bitxor(state(byteIndex), ...
-                    substitution(double(temporary) + 1));
-                temporary = state(byteIndex);
+            % Four dependent updates amortize the byte-loop overhead.
+            for byteIndex = 1:4:48
+                temporary = bitxor(state(byteIndex), substitution(temporary + 1));
+                state(byteIndex) = temporary;
+                temporary = bitxor(state(byteIndex + 1), substitution(temporary + 1));
+                state(byteIndex + 1) = temporary;
+                temporary = bitxor(state(byteIndex + 2), substitution(temporary + 1));
+                state(byteIndex + 2) = temporary;
+                temporary = bitxor(state(byteIndex + 3), substitution(temporary + 1));
+                state(byteIndex + 3) = temporary;
             end
-            temporary = uint8(mod(double(temporary) + roundIndex, 256));
+            temporary = bitand(temporary + uint16(roundIndex), uint16(255));
         end
     end
+    state = uint8(state);
+    checksum = uint8(checksum);
 end
