@@ -1,6 +1,6 @@
 function outputFile = buildDataHash(outputFile)
     %buildDataHash - Assemble the standalone DataHash distribution file
-    %   outputFile = buildDataHash() writes DataHash.m in the repository root
+    %   outputFile = buildDataHash() writes build/DataHash.m
     %   and returns its absolute path as a character vector. The file contains
     %   the authored functions under src. Distribute it with license.txt.
     %
@@ -17,7 +17,7 @@ function outputFile = buildDataHash(outputFile)
 
     arguments
         outputFile {mustBeOutputFile} = ...
-            fullfile(fileparts(mfilename('fullpath')), 'DataHash.m')
+            fullfile(fileparts(mfilename('fullpath')), 'build', 'DataHash.m')
     end
 
     repositoryFolder = fileparts(mfilename('fullpath'));
@@ -30,6 +30,9 @@ function outputFile = buildDataHash(outputFile)
     end
     if isempty(outputFolder)
         outputFolder = pwd;
+    end
+    if nargin == 0 && ~isfolder(outputFolder)
+        mkdir(outputFolder);
     end
     [status, folderInfo] = fileattrib(outputFolder);
     if ~status || ~isscalar(folderInfo) || ~folderInfo.directory
