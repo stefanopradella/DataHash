@@ -347,62 +347,68 @@ static void sha1Compress(uint32_t state[5], const uint8_t *block)
  * Instruction behavior follows Intel's SHA Extensions reference:
  * https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sha-extensions.html */
 __attribute__((target("sha")))
-static void sha1CompressSha(uint32_t state[5], const uint8_t *block)
+static void sha1CompressBlocksSha(uint32_t state[5], const uint8_t *bytes,
+    size_t blockCount)
 {
     uint32_t words[16];
+    size_t blockIndex;
     unsigned int roundIndex, groupIndex;
     __m128i schedule[20];
-    __m128i abcd, savedAbcd, savedE, previousAbcd, message, withE;
-    for (roundIndex = 0; roundIndex < 16; ++roundIndex) {
-        words[roundIndex] = load32BigEndian(block + 4 * roundIndex);
-    }
-    for (groupIndex = 0; groupIndex < 4; ++groupIndex) {
-        schedule[groupIndex] = _mm_shuffle_epi32(
-            _mm_loadu_si128((const __m128i *)(words + 4 * groupIndex)), 0x1b);
-    }
-    for (; groupIndex < 20; ++groupIndex) {
-        schedule[groupIndex] = _mm_sha1msg2_epu32(
-            _mm_xor_si128(_mm_sha1msg1_epu32(schedule[groupIndex - 4],
-                schedule[groupIndex - 3]), schedule[groupIndex - 2]),
-            schedule[groupIndex - 1]);
-    }
-
+    __m128i abcd, eValue, savedAbcd, savedE, previousAbcd, message, withE;
     abcd = _mm_shuffle_epi32(_mm_loadu_si128((const __m128i *)state), 0x1b);
-    savedAbcd = abcd;
-    savedE = _mm_slli_si128(_mm_cvtsi32_si128((int)state[4]), 12);
-    message = schedule[0];
-    withE = _mm_add_epi32(savedE, message);
-    previousAbcd = abcd;
-    abcd = _mm_sha1rnds4_epu32(abcd, withE, 0);
-    for (groupIndex = 1; groupIndex < 5; ++groupIndex) {
-        message = schedule[groupIndex];
-        withE = _mm_sha1nexte_epu32(previousAbcd, message);
+    eValue = _mm_slli_si128(_mm_cvtsi32_si128((int)state[4]), 12);
+    for (blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
+        const uint8_t *block = bytes + 64 * blockIndex;
+        for (roundIndex = 0; roundIndex < 16; ++roundIndex) {
+            words[roundIndex] = load32BigEndian(block + 4 * roundIndex);
+        }
+        for (groupIndex = 0; groupIndex < 4; ++groupIndex) {
+            schedule[groupIndex] = _mm_shuffle_epi32(
+                _mm_loadu_si128((const __m128i *)(words + 4 * groupIndex)), 0x1b);
+        }
+        for (; groupIndex < 20; ++groupIndex) {
+            schedule[groupIndex] = _mm_sha1msg2_epu32(
+                _mm_xor_si128(_mm_sha1msg1_epu32(schedule[groupIndex - 4],
+                    schedule[groupIndex - 3]), schedule[groupIndex - 2]),
+                schedule[groupIndex - 1]);
+        }
+
+        savedAbcd = abcd;
+        savedE = eValue;
+        message = schedule[0];
+        withE = _mm_add_epi32(savedE, message);
         previousAbcd = abcd;
         abcd = _mm_sha1rnds4_epu32(abcd, withE, 0);
-    }
-    for (; groupIndex < 10; ++groupIndex) {
-        message = schedule[groupIndex];
-        withE = _mm_sha1nexte_epu32(previousAbcd, message);
-        previousAbcd = abcd;
-        abcd = _mm_sha1rnds4_epu32(abcd, withE, 1);
-    }
-    for (; groupIndex < 15; ++groupIndex) {
-        message = schedule[groupIndex];
-        withE = _mm_sha1nexte_epu32(previousAbcd, message);
-        previousAbcd = abcd;
-        abcd = _mm_sha1rnds4_epu32(abcd, withE, 2);
-    }
-    for (; groupIndex < 20; ++groupIndex) {
-        message = schedule[groupIndex];
-        withE = _mm_sha1nexte_epu32(previousAbcd, message);
-        previousAbcd = abcd;
-        abcd = _mm_sha1rnds4_epu32(abcd, withE, 3);
-    }
+        for (groupIndex = 1; groupIndex < 5; ++groupIndex) {
+            message = schedule[groupIndex];
+            withE = _mm_sha1nexte_epu32(previousAbcd, message);
+            previousAbcd = abcd;
+            abcd = _mm_sha1rnds4_epu32(abcd, withE, 0);
+        }
+        for (; groupIndex < 10; ++groupIndex) {
+            message = schedule[groupIndex];
+            withE = _mm_sha1nexte_epu32(previousAbcd, message);
+            previousAbcd = abcd;
+            abcd = _mm_sha1rnds4_epu32(abcd, withE, 1);
+        }
+        for (; groupIndex < 15; ++groupIndex) {
+            message = schedule[groupIndex];
+            withE = _mm_sha1nexte_epu32(previousAbcd, message);
+            previousAbcd = abcd;
+            abcd = _mm_sha1rnds4_epu32(abcd, withE, 2);
+        }
+        for (; groupIndex < 20; ++groupIndex) {
+            message = schedule[groupIndex];
+            withE = _mm_sha1nexte_epu32(previousAbcd, message);
+            previousAbcd = abcd;
+            abcd = _mm_sha1rnds4_epu32(abcd, withE, 3);
+        }
 
-    withE = _mm_sha1nexte_epu32(previousAbcd, savedE);
-    abcd = _mm_add_epi32(abcd, savedAbcd);
+        eValue = _mm_sha1nexte_epu32(previousAbcd, savedE);
+        abcd = _mm_add_epi32(abcd, savedAbcd);
+    }
     _mm_storeu_si128((__m128i *)state, _mm_shuffle_epi32(abcd, 0x1b));
-    state[4] = (uint32_t)_mm_cvtsi128_si32(_mm_srli_si128(withE, 12));
+    state[4] = (uint32_t)_mm_cvtsi128_si32(_mm_srli_si128(eValue, 12));
 }
 #endif
 
@@ -519,42 +525,47 @@ static void sha256Compress(uint32_t state[8], const uint8_t *block)
  * The state layout follows Intel's SHA Extensions reference:
  * https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sha-extensions.html */
 __attribute__((target("sha")))
-static void sha256CompressSha(uint32_t state[8], const uint8_t *block)
+static void sha256CompressBlocksSha(uint32_t state[8], const uint8_t *bytes,
+    size_t blockCount)
 {
     uint32_t words[16];
     uint32_t abef[4], cdgh[4];
+    size_t blockIndex;
     unsigned int roundIndex, groupIndex;
     __m128i schedule[16];
     __m128i state0, state1, saved0, saved1, message;
-    for (roundIndex = 0; roundIndex < 16; ++roundIndex) {
-        words[roundIndex] = load32BigEndian(block + 4 * roundIndex);
-    }
-    for (groupIndex = 0; groupIndex < 4; ++groupIndex) {
-        schedule[groupIndex] = _mm_loadu_si128((const __m128i *)(words + 4 * groupIndex));
-    }
-    for (; groupIndex < 16; ++groupIndex) {
-        __m128i previous7 = _mm_or_si128(
-            _mm_srli_si128(schedule[groupIndex - 2], 4),
-            _mm_slli_si128(schedule[groupIndex - 1], 12));
-        schedule[groupIndex] = _mm_sha256msg2_epu32(
-            _mm_add_epi32(_mm_sha256msg1_epu32(schedule[groupIndex - 4],
-                schedule[groupIndex - 3]), previous7), schedule[groupIndex - 1]);
-    }
-
     state0 = _mm_set_epi32((int)state[0], (int)state[1], (int)state[4], (int)state[5]);
     state1 = _mm_set_epi32((int)state[2], (int)state[3], (int)state[6], (int)state[7]);
-    saved0 = state0;
-    saved1 = state1;
-    for (groupIndex = 0; groupIndex < 16; ++groupIndex) {
-        message = _mm_add_epi32(
-            schedule[groupIndex],
-            _mm_loadu_si128((const __m128i *)(sha256Constants + 4 * groupIndex)));
-        state1 = _mm_sha256rnds2_epu32(state1, state0, message);
-        message = _mm_shuffle_epi32(message, 0x0e);
-        state0 = _mm_sha256rnds2_epu32(state0, state1, message);
+    for (blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
+        const uint8_t *block = bytes + 64 * blockIndex;
+        for (roundIndex = 0; roundIndex < 16; ++roundIndex) {
+            words[roundIndex] = load32BigEndian(block + 4 * roundIndex);
+        }
+        for (groupIndex = 0; groupIndex < 4; ++groupIndex) {
+            schedule[groupIndex] = _mm_loadu_si128((const __m128i *)(words + 4 * groupIndex));
+        }
+        for (; groupIndex < 16; ++groupIndex) {
+            __m128i previous7 = _mm_or_si128(
+                _mm_srli_si128(schedule[groupIndex - 2], 4),
+                _mm_slli_si128(schedule[groupIndex - 1], 12));
+            schedule[groupIndex] = _mm_sha256msg2_epu32(
+                _mm_add_epi32(_mm_sha256msg1_epu32(schedule[groupIndex - 4],
+                    schedule[groupIndex - 3]), previous7), schedule[groupIndex - 1]);
+        }
+
+        saved0 = state0;
+        saved1 = state1;
+        for (groupIndex = 0; groupIndex < 16; ++groupIndex) {
+            message = _mm_add_epi32(
+                schedule[groupIndex],
+                _mm_loadu_si128((const __m128i *)(sha256Constants + 4 * groupIndex)));
+            state1 = _mm_sha256rnds2_epu32(state1, state0, message);
+            message = _mm_shuffle_epi32(message, 0x0e);
+            state0 = _mm_sha256rnds2_epu32(state0, state1, message);
+        }
+        state0 = _mm_add_epi32(state0, saved0);
+        state1 = _mm_add_epi32(state1, saved1);
     }
-    state0 = _mm_add_epi32(state0, saved0);
-    state1 = _mm_add_epi32(state1, saved1);
     _mm_storeu_si128((__m128i *)abef, state0);
     _mm_storeu_si128((__m128i *)cdgh, state1);
     state[0] = abef[3];
@@ -764,9 +775,7 @@ static void compressBlocks(HashContext *context, const uint8_t *bytes, size_t bl
         case METHOD_SHA1:
 #if defined(DATAHASH_SHA1_INTRINSICS)
             if (__builtin_cpu_supports("sha")) {
-                for (blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
-                    sha1CompressSha(context->state.words32, bytes + 64 * blockIndex);
-                }
+                sha1CompressBlocksSha(context->state.words32, bytes, blockCount);
                 break;
             }
 #endif
@@ -777,9 +786,7 @@ static void compressBlocks(HashContext *context, const uint8_t *bytes, size_t bl
         case METHOD_SHA256:
 #if defined(DATAHASH_SHA256_INTRINSICS)
             if (__builtin_cpu_supports("sha")) {
-                for (blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
-                    sha256CompressSha(context->state.words32, bytes + 64 * blockIndex);
-                }
+                sha256CompressBlocksSha(context->state.words32, bytes, blockCount);
                 break;
             }
 #endif
