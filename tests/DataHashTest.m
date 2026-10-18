@@ -19,8 +19,11 @@ classdef DataHashTest < matlab.unittest.TestCase
         invalidAsciiData = invalidAsciiInputs()
         invalidArgumentCase = invalidArgumentCases()
         emptyBinaryData = emptyBinaryInputs()
-        md5CoreCase = md5CoreCases()
-        md5CoreSplit = {0, 1, 55, 56, 63, 64, 65, 127, 128, 129, 256, 257}
+        coreCase = coreCases()
+        coreMethod = coreMethods()
+        coreSplit = {0, 1, 15, 16, 17, 55, 56, 63, 64, 65, 111, 112, 127, 128, 129, 256, 257}
+        coreChunkLength = {1, 7, 16, 63, 64, 127, 128, 257, 1024}
+        coreHeaderIndex = {1, 2, 3, 4, 5, 6, 7, 8}
         invalidCoreCase = invalidCoreCases()
         unavailableCore = {'matlabFile', 'invalidBinary'}
         coreFailureLength = {0, 3, 2^20}
@@ -260,38 +263,89 @@ classdef DataHashTest < matlab.unittest.TestCase
     end
 
     methods (Test, TestTags = {'MD5Accelerator'})
-        function acceleratorKnownAnswer(testCase, md5CoreCase)
+        function acceleratorKnownAnswer(testCase, coreCase)
             testCase.requireAccelerator();
 
-            actual = DataHashCore(md5CoreCase.data, uint8(5));
-            column = DataHashCore(md5CoreCase.data(:), uint8(5));
+            actual = DataHashCore(coreCase.data, coreCase.methodId);
+            column = DataHashCore(coreCase.data(:), coreCase.methodId);
 
-            testCase.verifyEqual(sprintf('%.2x', actual), md5CoreCase.expected);
+            testCase.verifyEqual(sprintf('%.2x', actual), coreCase.expected);
             testCase.verifyEqual(column, actual);
             testCase.verifyClass(actual, 'uint8');
-            testCase.verifySize(actual, [1, 16]);
+            testCase.verifySize(actual, [1, numel(coreCase.expected) / 2]);
         end
 
-        function acceleratorStreamingPartitions(testCase, md5CoreSplit)
+        function acceleratorStreamingPartitions(testCase, coreMethod, coreSplit)
             testCase.requireAccelerator();
             data = uint8(mod(0:256, 256));
-            context = DataHashCore(data(1:md5CoreSplit), uint8(5), ...
+            context = DataHashCore(data(1:coreSplit), coreMethod.id, ...
                 uint8([]), uint8(0));
             savedContext = context;
 
-            updated = DataHashCore(uint8([]), uint8(5), context, uint8(0));
-            digest = DataHashCore(data(md5CoreSplit + 1:end), ...
-                uint8(5), updated, uint8(1));
-            repeated = DataHashCore(data(md5CoreSplit + 1:end), ...
-                uint8(5), context, uint8(1));
+            updated = DataHashCore(uint8([]), coreMethod.id, context, uint8(0));
+            digest = DataHashCore(data(coreSplit + 1:end), ...
+                coreMethod.id, updated, uint8(1));
+            repeated = DataHashCore(data(coreSplit + 1:end), ...
+                coreMethod.id, context, uint8(1));
 
-            testCase.verifyEqual(sprintf('%.2x', digest), ...
-                'd42685433727eed453d0c4cb52ff6541');
+            testCase.verifyEqual(sprintf('%.2x', digest), coreMethod.expected);
             testCase.verifyEqual(repeated, digest);
             testCase.verifyEqual(updated, savedContext);
             testCase.verifyEqual(context, savedContext);
             testCase.verifyClass(context, 'uint8');
-            testCase.verifySize(context, [1, 96]);
+            testCase.verifySize(context, [1, coreMethod.contextLength]);
+        end
+
+        function acceleratorMultiChunk(testCase, coreMethod, coreChunkLength)
+            testCase.requireAccelerator();
+            data = uint8(mod(0:256, 256));
+
+            digest = hashCoreChunks(data, coreMethod.id, coreChunkLength);
+
+            testCase.verifyEqual(sprintf('%.2x', digest), coreMethod.expected);
+        end
+
+        function acceleratorEmptyStreaming(testCase, coreMethod)
+            testCase.requireAccelerator();
+            context = DataHashCore(uint8([]), coreMethod.id, uint8([]), uint8(0));
+
+            digest = DataHashCore(uint8([]), coreMethod.id, context, uint8(1));
+
+            testCase.verifyEqual(sprintf('%.2x', digest), coreMethod.emptyExpected);
+        end
+
+        function acceleratorMethodAvailable(testCase, coreMethod)
+            testCase.requireAccelerator();
+
+            available = hasDataHashCore(coreMethod.id, coreMethod.nativeFunction);
+
+            testCase.verifyTrue(available);
+        end
+
+        function acceleratorRejectsDifferentMethod(testCase, coreMethod)
+            testCase.requireAccelerator();
+            context = DataHashCore(uint8('abc'), coreMethod.id, uint8([]), uint8(0));
+            otherId = uint8(mod(double(coreMethod.id), 6) + 1);
+
+            testCase.verifyError(@() callCore({uint8([]), otherId, context, uint8(1)}), ...
+                'DataHashCore:InvalidContext');
+        end
+
+        function acceleratorRejectsTruncatedContext(testCase, coreMethod)
+            testCase.requireAccelerator();
+            context = DataHashCore(uint8('abc'), coreMethod.id, uint8([]), uint8(0));
+
+            testCase.verifyError(@() callCore({uint8([]), coreMethod.id, context(1:end - 1), uint8(1)}), ...
+                'DataHashCore:InvalidContext');
+        end
+
+        function acceleratorRejectsCorruptHeader(testCase, coreMethod, coreHeaderIndex)
+            testCase.requireAccelerator();
+            context = DataHashCore(uint8('abc'), coreMethod.id, uint8([]), uint8(0));
+            context(coreHeaderIndex) = bitxor(context(coreHeaderIndex), uint8(1));
+
+            testCase.verifyError(@() callCore({uint8([]), coreMethod.id, context, uint8(1)}), ...
+                'DataHashCore:InvalidContext');
         end
 
         function acceleratorInvalidInput(testCase, invalidCoreCase)
@@ -362,7 +416,7 @@ classdef DataHashTest < matlab.unittest.TestCase
 
         function requireAccelerator(testCase)
             testCase.assumeEqual(exist('DataHashCore', 'file'), 3, ...
-                'Optional MD5 MEX not found. Run buildDataHashMex first.');
+                'Optional MEX accelerator not found. Run buildDataHashMex first.');
         end
 
         function hideAccelerator(testCase, kind)
@@ -459,19 +513,51 @@ function clearCore()
     clear DataHashCore;
 end
 
-function namedCases = md5CoreCases()
+function digest = hashCoreChunks(data, methodId, chunkLength)
+    context = uint8([]);
+    for firstByte = 1:chunkLength:numel(data)
+        lastByte = min(firstByte + chunkLength - 1, numel(data));
+        context = DataHashCore(data(firstByte:lastByte), methodId, context, uint8(0));
+    end
+    digest = DataHashCore(uint8([]), methodId, context, uint8(1));
+end
+
+function namedCases = coreMethods()
+    vectors = digestCases();
+    methods = {'sha1', 1, 100; 'md2', 2, 64; 'sha256', 3, 112; ...
+        'sha384', 4, 216; 'md5', 5, 96; 'sha512', 6, 216};
+    namedCases = struct;
+    for methodIndex = 1:size(methods, 1)
+        name = methods{methodIndex, 1};
+        vector = vectors.([name, 'MultiBlock']);
+        emptyVector = vectors.([name, 'Empty']);
+        namedCases.(name) = struct('id', uint8(methods{methodIndex, 2}), ...
+            'contextLength', methods{methodIndex, 3}, 'expected', vector.expected, ...
+            'emptyExpected', emptyVector.expected, ...
+            'nativeFunction', str2func([name, 'Digest']));
+    end
+end
+
+function namedCases = coreCases()
     allCases = digestCases();
     names = fieldnames(allCases);
-    namedCases = rmfield(allCases, names(~startsWith(names, 'md5')));
+    namedCases = struct;
+    methods = coreMethods();
+    for caseIndex = 1:numel(names)
+        name = names{caseIndex};
+        item = allCases.(name);
+        method = methods.(lower(strrep(item.method, '-', '')));
+        namedCases.(name) = struct('data', item.data, ...
+            'expected', item.expected, 'methodId', method.id);
+    end
     allCases = boundaryCases();
     names = fieldnames(allCases);
     for caseIndex = 1:numel(names)
         name = names{caseIndex};
-        if startsWith(name, 'md5')
-            boundary = allCases.(name);
-            namedCases.(name) = struct('data', uint8(0:boundary.length - 1), ...
-                'expected', boundary.expected);
-        end
+        boundary = allCases.(name);
+        method = methods.(lower(strrep(boundary.method, '-', '')));
+        namedCases.(name) = struct('data', uint8(0:boundary.length - 1), ...
+            'expected', boundary.expected, 'methodId', method.id);
     end
 end
 
@@ -486,7 +572,8 @@ function namedCases = invalidCoreCases()
         'ndBytes', {zeros(1, 1, 2, 'uint8'), uint8(5)}, 'InvalidBytes'; ...
         'sparseBytes', {sparse(1), uint8(5)}, 'InvalidBytes'; ...
         'doubleMethod', {empty, 5}, 'InvalidMethod'; ...
-        'unsupportedMethod', {empty, uint8(2)}, 'InvalidMethod'; ...
+        'unsupportedMethod', {empty, uint8(7)}, 'InvalidMethod'; ...
+        'zeroMethod', {empty, uint8(0)}, 'InvalidMethod'; ...
         'emptyMethod', {empty, empty}, 'InvalidMethod'; ...
         'vectorMethod', {empty, uint8([5, 5])}, 'InvalidMethod'; ...
         'doubleContext', {empty, uint8(5), [], uint8(0)}, 'InvalidContext'; ...
