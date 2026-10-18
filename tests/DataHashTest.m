@@ -32,14 +32,6 @@ classdef DataHashTest < matlab.unittest.TestCase
         method = {'MD2', 'MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'}
     end
 
-    methods (TestClassSetup)
-        function addSourceFolder(testCase)
-            repositoryFolder = fileparts(fileparts(mfilename('fullpath')));
-            testCase.applyFixture(matlab.unittest.fixtures.PathFixture( ...
-                fullfile(repositoryFolder, 'src'), 'IncludingSubfolders', true));
-        end
-    end
-
     methods (Test)
         function forceNativeDigestCompatibility(testCase, digestCase)
             actual = DataHash(digestCase.data, digestCase.method, 'bin', ...
@@ -415,6 +407,8 @@ classdef DataHashTest < matlab.unittest.TestCase
         end
 
         function requireAccelerator(testCase)
+            repositoryFolder = fileparts(fileparts(mfilename('fullpath')));
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(repositoryFolder));
             testCase.assumeEqual(exist('DataHashCore', 'file'), 3, ...
                 'Optional MEX accelerator not found. Run buildDataHashMex first.');
         end

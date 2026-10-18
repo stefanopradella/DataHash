@@ -53,9 +53,9 @@ function runChecks(repositoryFolder)
 
     for implementationIndex = 1:2
         path(isolatedPath);
+        addpath(genpath(sourceFolder));
         if implementationIndex == 1
             cd(workFolder);
-            addpath(genpath(sourceFolder));
             expectedFile = fullfile(sourceFolder, 'DataHash.m');
             label = 'Source';
         else
@@ -86,8 +86,9 @@ function runChecks(repositoryFolder)
             '%s has failures or unexplained incomplete tests.', label);
     end
 
-    % Suite fixtures temporarily add src. Repeat only essential stored vectors
-    % after teardown to confirm the generated file has no external helpers.
+    % Repeat only essential stored vectors without source helpers to confirm
+    % the generated file is self-contained.
+    path(isolatedPath);
     assert(isempty(which('serializeObject')) && isempty(which('md5Digest')), ...
         'Source helpers are still on the path.');
     addpath(fullfile(repositoryFolder, 'tests'));
