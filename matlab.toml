@@ -1,0 +1,27 @@
+name = "DataHash"
+
+[folders]
+path = [
+    ".",
+    "src",
+    "src/md2",
+    "src/md5",
+    "src/sha1",
+    "src/sha256",
+    "src/sha384",
+    "src/sha512",
+    "tests",
+    "tests/performance",
+]
+test = ["tests"]
+
+[project]
+summary = "MATLAB hashing with optional native MEX acceleration."
+startup-folder = "."
+
+[project.shortcuts.Build]
+"Build DataHash" = {path = "buildDataHash.m"}
+"Build MEX accelerator" = {path = "buildDataHashMex.m"}
+
+[project.shortcuts.Test]
+"Run Tests" = {path = "tests/DataHashTest.m"}
