@@ -36,6 +36,9 @@
 #if !defined(DATAHASH_FORCE_SOFTWARE_SHA256)
 #define DATAHASH_SHA256_INTRINSICS 1
 #endif
+#if !defined(DATAHASH_FORCE_SOFTWARE_SHA512)
+#define DATAHASH_SHA512_AVX2 1
+#endif
 #endif
 
 enum {
@@ -601,6 +604,80 @@ static void sha512Compress(uint64_t state[8], const uint8_t *block)
     state[7] += h;
 }
 
+#if defined(DATAHASH_SHA512_AVX2)
+/* Expand four independent block schedules in AVX2 lanes. Their compression
+ * rounds still run in input order because each block depends on the prior state. */
+__attribute__((target("avx2")))
+static void sha512CompressBlocksAvx2(uint64_t state[8], const uint8_t *bytes,
+    size_t blockCount)
+{
+    uint64_t words[80][4];
+    size_t blockIndex;
+    unsigned int roundIndex, laneIndex;
+
+    for (blockIndex = 0; blockIndex + 4 <= blockCount; blockIndex += 4) {
+        for (roundIndex = 0; roundIndex < 16; ++roundIndex) {
+            for (laneIndex = 0; laneIndex < 4; ++laneIndex) {
+                words[roundIndex][laneIndex] = load64BigEndian(
+                    bytes + 128 * (blockIndex + laneIndex) + 8 * roundIndex);
+            }
+        }
+        for (roundIndex = 16; roundIndex < 80; ++roundIndex) {
+            __m256i x = _mm256_loadu_si256((const __m256i *)words[roundIndex - 15]);
+            __m256i y = _mm256_loadu_si256((const __m256i *)words[roundIndex - 2]);
+            __m256i sigma0 = _mm256_xor_si256(
+                _mm256_xor_si256(
+                    _mm256_or_si256(_mm256_srli_epi64(x, 1), _mm256_slli_epi64(x, 63)),
+                    _mm256_or_si256(_mm256_srli_epi64(x, 8), _mm256_slli_epi64(x, 56))),
+                _mm256_srli_epi64(x, 7));
+            __m256i sigma1 = _mm256_xor_si256(
+                _mm256_xor_si256(
+                    _mm256_or_si256(_mm256_srli_epi64(y, 19), _mm256_slli_epi64(y, 45)),
+                    _mm256_or_si256(_mm256_srli_epi64(y, 61), _mm256_slli_epi64(y, 3))),
+                _mm256_srli_epi64(y, 6));
+            __m256i sum = _mm256_add_epi64(
+                _mm256_add_epi64(
+                    _mm256_loadu_si256((const __m256i *)words[roundIndex - 16]), sigma0),
+                _mm256_add_epi64(
+                    _mm256_loadu_si256((const __m256i *)words[roundIndex - 7]), sigma1));
+            _mm256_storeu_si256((__m256i *)words[roundIndex], sum);
+        }
+        for (laneIndex = 0; laneIndex < 4; ++laneIndex) {
+            uint64_t a = state[0], b = state[1], c = state[2], d = state[3];
+            uint64_t e = state[4], f = state[5], g = state[6], h = state[7];
+            for (roundIndex = 0; roundIndex < 80; ++roundIndex) {
+                uint64_t sigma1 = rotateRight64(e, 14) ^ rotateRight64(e, 18) ^
+                    rotateRight64(e, 41);
+                uint64_t temporary1 = h + sigma1 + (g ^ (e & (f ^ g))) +
+                    sha512Constants[roundIndex] + words[roundIndex][laneIndex];
+                uint64_t sigma0 = rotateRight64(a, 28) ^ rotateRight64(a, 34) ^
+                    rotateRight64(a, 39);
+                uint64_t temporary2 = sigma0 + ((a & b) ^ (c & (a ^ b)));
+                h = g;
+                g = f;
+                f = e;
+                e = d + temporary1;
+                d = c;
+                c = b;
+                b = a;
+                a = temporary1 + temporary2;
+            }
+            state[0] += a;
+            state[1] += b;
+            state[2] += c;
+            state[3] += d;
+            state[4] += e;
+            state[5] += f;
+            state[6] += g;
+            state[7] += h;
+        }
+    }
+    for (; blockIndex < blockCount; ++blockIndex) {
+        sha512Compress(state, bytes + 128 * blockIndex);
+    }
+}
+#endif
+
 static void initializeContext(HashContext *context, uint8_t method)
 {
     static const uint32_t sha1Initial[5] = {
@@ -705,6 +782,12 @@ static void compressBlocks(HashContext *context, const uint8_t *bytes, size_t bl
             break;
         case METHOD_SHA384:
         case METHOD_SHA512:
+#if defined(DATAHASH_SHA512_AVX2)
+            if (__builtin_cpu_supports("avx2") && blockCount >= 4) {
+                sha512CompressBlocksAvx2(context->state.words64, bytes, blockCount);
+                break;
+            }
+#endif
             for (blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
                 sha512Compress(context->state.words64, bytes + 128 * blockIndex);
             }
