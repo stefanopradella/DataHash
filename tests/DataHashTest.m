@@ -28,6 +28,7 @@ classdef DataHashTest < matlab.unittest.TestCase
         unavailableCore = {'matlabFile', 'invalidBinary'}
         coreFailureLength = {0, 3, 2^20}
         nativeFlagValue = {false, true, 0, 1}
+        numericArray = numericArrays()
         invalidNativeFlag = {2, -1, NaN, Inf, 1i, 'true', [false, true], [], {true}}
         method = {'MD2', 'MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'}
     end
@@ -89,6 +90,19 @@ classdef DataHashTest < matlab.unittest.TestCase
             testCase.verifyEqual(openFiles(), originalFiles);
         end
 
+        function forceNativeArrayBypassesAccelerator(testCase)
+            hashFunction = @DataHash;
+            data = uint8(0:128);
+            expected = hashFunction(data, 'MD5', 'array', 'uint8', 'ForceNative', true);
+            testCase.installFailingAccelerator();
+            testCase.verifyError(@() hashFunction(data, 'MD5', 'array'), ...
+                'DataHashTest:AcceleratorCalled');
+
+            actual = hashFunction(data, 'MD5', 'array', 'uint8', 'ForceNative', true);
+
+            testCase.verifyEqual(actual, expected);
+        end
+
         function nativeFileEntryPoint(testCase, digestCase)
             fileName = testCase.writeTemporaryFile(digestCase.data);
             functionName = [lower(strrep(digestCase.method, '-', '')), 'DigestFile'];
@@ -113,6 +127,9 @@ classdef DataHashTest < matlab.unittest.TestCase
 
         function acceleratorUnavailable(testCase, unavailableCore)
             hashFunction = @DataHash;
+            arrayData = reshape(int32(-12:11), 3, 8);
+            expectedArray = hashFunction(arrayData, 'MD5', 'array', 'uint8', ...
+                'ForceNative', true);
             fileName = testCase.writeTemporaryFile(uint8('abc'));
             originalFiles = testCase.trackOpenFiles();
             testCase.hideAccelerator(unavailableCore);
@@ -120,9 +137,11 @@ classdef DataHashTest < matlab.unittest.TestCase
             testCase.verifyWarningFree(@() hashFunction('abc', 'MD5', 'ascii'));
             actual = hashFunction(uint8('abc'), 'MD5', 'bin');
             fileHash = hashFunction(fileName, 'MD5', 'file');
+            arrayHash = hashFunction(arrayData, 'MD5', 'array', 'uint8');
 
             testCase.verifyEqual(actual, '900150983cd24fb0d6963f7d28e17f72');
             testCase.verifyEqual(fileHash, actual);
+            testCase.verifyEqual(arrayHash, expectedArray);
             testCase.verifyEqual(openFiles(), originalFiles);
         end
 
@@ -255,6 +274,18 @@ classdef DataHashTest < matlab.unittest.TestCase
     end
 
     methods (Test, TestTags = {'MD5Accelerator'})
+        function acceleratorNumericArrayCompatibility(testCase, numericArray, method)
+            testCase.requireAccelerator();
+            expected = DataHash(numericArray, method, 'array', 'uint8', ...
+                'ForceNative', true);
+
+            actual = DataHash(numericArray, method, 'array', 'uint8');
+
+            testCase.verifyEqual(actual, expected);
+            testCase.verifyClass(actual, 'uint8');
+            testCase.verifySize(actual, size(expected));
+        end
+
         function acceleratorKnownAnswer(testCase, coreCase)
             testCase.requireAccelerator();
 
@@ -1018,6 +1049,38 @@ function namedCases = invalidArgumentCases()
     namedCases.outputFormatArray = {'MD5', 'array', ["hex", "uint8"]};
     namedCases.emptyMethod = {strings(1, 0)};
     namedCases.tooManyOptions = {'MD5', 'array', 'hex', 'extra'};
+end
+
+function namedArrays = numericArrays()
+    arguments
+    end
+
+    namedArrays = struct;
+    classes = {'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', ...
+        'int64', 'uint64', 'single', 'double'};
+    for classIndex = 1:numel(classes)
+        className = classes{classIndex};
+        values = cast(-16:16, className);
+        namedArrays.([className, 'Row']) = values;
+        namedArrays.([className, 'Column']) = values(:);
+        namedArrays.([className, 'Matrix']) = reshape(cast(0:23, className), 3, 8);
+        namedArrays.([className, 'Nd']) = reshape(cast(0:23, className), 2, 3, 4);
+        namedArrays.([className, 'Empty']) = zeros(0, 3, className);
+    end
+    % A uint8 array has 29 metadata bytes, so these straddle the padding
+    % and digest block boundaries for both 64-byte and 128-byte cores.
+    lengths = [0, 1, 26, 27, 34, 35, 36, 82, 83, 98, 99, 100, 227, 228];
+    for lengthIndex = 1:numel(lengths)
+        length = lengths(lengthIndex);
+        namedArrays.(sprintf('uint8Length%d', length)) = uint8(0:length - 1);
+    end
+    namedArrays.doubleSpecial = [NaN, Inf, -Inf, -0, 0, realmin, realmax];
+    namedArrays.singleSpecial = single(namedArrays.doubleSpecial);
+    namedArrays.int64Extremes = [intmin('int64'), int64(-1), intmax('int64')];
+    namedArrays.uint64Extremes = [uint64(0), uint64(1), intmax('uint64')];
+    namedArrays.complexDouble = complex([-1, 0, 1], [2, -3, 4]);
+    namedArrays.complexSingle = single(namedArrays.complexDouble);
+    namedArrays.sparseDouble = sparse([1, 3], [2, 4], [-1, 2], 4, 5);
 end
 
 function namedInputs = emptyBinaryInputs()

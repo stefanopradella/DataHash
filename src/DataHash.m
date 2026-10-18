@@ -36,10 +36,14 @@ function result = DataHash(data, method, inputType, outputFormat, options)
 
     [method, inputType, outputFormat] = parseFunctionInputs(data, method, inputType, outputFormat);
 
-    [digestFunction, fileDigestFunction] = getHashFunctions(method, ~options.ForceNative);
+    [digestFunction, fileDigestFunction, numericArrayDigestFunction] = ...
+        getHashFunctions(method, ~options.ForceNative);
 
     if inputType == "file"
         digest = fileDigestFunction(data);
+    elseif inputType == "array" && ~isempty(numericArrayDigestFunction) && ...
+            isnumeric(data) && ~isobject(data) && isreal(data) && ~issparse(data)
+        digest = numericArrayDigestFunction(data);
     else
         if inputType == "array"
             bytes = serializeObject(data);

@@ -1,4 +1,4 @@
-function [digestFunction, fileDigestFunction] = getHashFunctions(method, useAccelerator)
+function [digestFunction, fileDigestFunction, numericArrayDigestFunction] = getHashFunctions(method, useAccelerator)
     %getHashFunctions - Select memory and file hashing functions
     %   [DIGESTFUNCTION,FILEDIGESTFUNCTION] = getHashFunctions(METHOD) binds
     %   the requested algorithm to a compatible MEX or native backend.
@@ -7,6 +7,10 @@ function [digestFunction, fileDigestFunction] = getHashFunctions(method, useAcce
     %
     %   getHashFunctions(METHOD,false) selects native functions explicitly
     %   for the native file entry points and performance comparisons.
+    %
+    %   [DIGESTFUNCTION,FILEDIGESTFUNCTION,numericArrayDigestFunction] = getHashFunctions(...)
+    %   also returns a function for real, full built-in numeric arrays when
+    %   a compatible MEX is selected, or [] for the native backend.
     %
     %   See also DataHash, digestFile, hasDataHashCore
 
@@ -48,8 +52,10 @@ function [digestFunction, fileDigestFunction] = getHashFunctions(method, useAcce
             error('DataHash:InvalidOption', 'Unsupported hashing method: %s.', method);
     end
 
+    numericArrayDigestFunction = [];
     if useAccelerator && hasDataHashCore(methodId, digestFunction)
         digestFunction = @(bytes) DataHashCore(bytes, methodId);
+        numericArrayDigestFunction = @(value) digestNumericArray(value, methodId);
         coreFunction = @(bytes, context, finalize) ...
             DataHashCore(bytes, methodId, context, uint8(finalize));
         initializeFunction = @() zeros(0, 1, 'uint8');

@@ -55,6 +55,7 @@ function outputFile = buildDataHash(outputFile)
         'DataHash.m'
         'getHashFunctions.m'
         'hasDataHashCore.m'
+        'digestNumericArray.m'
         'digestFile.m'
         'nativeDigestCore.m'
         'serializeObject.m'
