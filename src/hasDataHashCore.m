@@ -19,18 +19,29 @@ function available = hasDataHashCore(methodId, nativeDigestFunction)
         nativeDigestFunction (1, 1) function_handle = @md5Digest
     end
 
-    persistent checkedFile checkedStamp checkedMethods checkedAvailable
+    persistent checkedHandle checkedFile checkedStamp checkedMethods checkedAvailable
     available = false;
-    if exist('DataHashCore', 'file') ~= 3
+    coreHandle = @DataHashCore;
+    if isempty(checkedFile) || ~isequal(coreHandle, checkedHandle)
+        if exist('DataHashCore', 'file') ~= 3
+            return;
+        end
+        coreFile = which('DataHashCore');
+    else
+        coreFile = checkedFile;
+    end
+    if isempty(coreFile)
         return;
     end
-    coreFile = which('DataHashCore');
     coreInfo = dir(coreFile);
     if isempty(coreInfo)
+        checkedHandle = [];
+        checkedFile = [];
         return;
     end
     stamp = [coreInfo.datenum, coreInfo.bytes];
     if ~isequal(coreFile, checkedFile) || ~isequal(stamp, checkedStamp)
+        checkedHandle = coreHandle;
         checkedFile = coreFile;
         checkedStamp = stamp;
         checkedMethods = false(1, 6);
