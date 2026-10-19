@@ -29,6 +29,7 @@ classdef DataHashTest < matlab.unittest.TestCase
         coreFailureLength = {0, 3, 2^20}
         nativeFlagValue = {false, true, 0, 1}
         numericArray = numericArrays()
+        nativeSha256Case = nativeSha256Cases()
         invalidNativeFlag = {2, -1, NaN, Inf, 1i, 'true', [false, true], [], {true}}
         method = {'MD2', 'MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'}
     end
@@ -38,6 +39,15 @@ classdef DataHashTest < matlab.unittest.TestCase
             actual = DataHash(digestCase.data, digestCase.method, 'bin', ...
                 'ForceNative', true);
             testCase.verifyEqual(actual, digestCase.expected);
+        end
+
+        function nativeSha256PreparedTermsKnownAnswer(testCase, nativeSha256Case)
+            offsets = 0:nativeSha256Case.length - 1;
+            data = uint8(mod(37 * offsets + floor(offsets / 251) + 17, 256));
+
+            actual = DataHash(data, 'SHA-256', 'bin', 'hex', 'ForceNative', true);
+
+            testCase.verifyEqual(actual, nativeSha256Case.expected);
         end
 
         function forceNativeOutputKnownAnswer(testCase, outputCase)
@@ -1049,6 +1059,32 @@ function namedCases = invalidArgumentCases()
     namedCases.outputFormatArray = {'MD5', 'array', ["hex", "uint8"]};
     namedCases.emptyMethod = {strings(1, 0)};
     namedCases.tooManyOptions = {'MD5', 'array', 'hex', 'extra'};
+end
+
+function namedCases = nativeSha256Cases()
+    arguments
+    end
+
+    % Stored Python hashlib answers use the streaming test's byte pattern.
+    cases = { ...
+        0, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; ...
+        1, '4a64a107f0cb32536e5bce6c98c393db21cca7f4ea187ba8c4dca8b51d4ea80a'; ...
+        55, '80101b9d1281ccb3b9fb63729c2f80dab4ae7a56b55b954e9cc6451bf2825b52'; ...
+        56, '0814299f4494565303090505b77ee5863c6672a94e4999fbbff8ec396d58bf55'; ...
+        63, '4bc2da88441f15a6ed90d3dacd20cc601703a419c7568a7dc7bf59d88c9a21fb'; ...
+        64, '281202b0dcadec296df6e31b394a7604a0eaad74f1dd7bc127c944ba18c2fc83'; ...
+        65, 'f0a83190bd50aa46bb2740275e374e918b0ea3d8330fb8679bd88f1af8d761e7'; ...
+        65535, '76300702cf0c62eb535005dd4ed75e9011a02fbbc206829f2bd3d4d4f6563ab2'; ...
+        65536, '856b416851eeacf81481ae981231f6af74480fb19c29ed3d26274bf3d0bf0fd2'; ...
+        65537, '9ca854ec9c7a9d14ddbedd0a9d270b6ad698cc1aa5c1b9a6b40a5f8cbfb051ee'; ...
+        131071, '1f2cc7d1e89ada42d1d9758733789a127ee9a68f01bcadb61dc4d669404ecdeb'; ...
+        131072, '71881895bd38c5dbbe4f0acb75c575f6be08369f8466b3d2e5a04cd2d990ad70'; ...
+        131073, '882ba8b30160865f3fb109be5b70510fe642a92c80189fe4e2457ca0e1be002c'};
+    namedCases = struct;
+    for caseIndex = 1:size(cases, 1)
+        namedCases.(sprintf('length%d', cases{caseIndex, 1})) = ...
+            struct('length', cases{caseIndex, 1}, 'expected', cases{caseIndex, 2});
+    end
 end
 
 function namedArrays = numericArrays()
