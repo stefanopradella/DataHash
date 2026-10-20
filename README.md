@@ -4,7 +4,7 @@ DataHash is a hashing utility originally developed by Jan Simon.
 
 # Usage
 
-Put `DataHash.m` in the current MATLAB folder or add this repository to the MATLAB path.
+Put `DataHash.m` in your MATLAB folder or add its folder to the MATLAB path.
 
 ```matlab
 hash = DataHash(data, method, inputType, outputFormat)
@@ -15,7 +15,7 @@ Positional options must be supplied in the order shown, as character vectors or 
 Append the optional name-value argument `'ForceNative', true` to use the native MATLAB implementation even when a compatible MEX accelerator is present. It accepts a logical scalar or numeric `0` or `1` and defaults to `false`, allowing automatic accelerator selection. This calling syntax supports MATLAB R2019b and later.
 
 ```matlab
-hash = DataHash('logo.png', 'MD5', 'file', 'ForceNative', true);
+hash = DataHash('license.txt', 'MD5', 'file', 'ForceNative', true);
 ```
 
 Supported data types for `data` with `array` input:
@@ -96,7 +96,7 @@ The authored functions live under `src`. From the repository root, assemble the 
 outputFile = buildDataHash();
 ```
 
-This creates `DataHash.m` in the repository root. Distribute it with `license.txt`; the generated file retains a short attribution and license reference. Edit the files under `src` and rebuild instead of editing the generated file.
+This creates `build/DataHash.m`. Distribute it with `license.txt`; edit sources under `src` and rebuild.
 
 To use another destination, pass the path to a file named `DataHash.m`. Its parent folder must already exist, and the destination must be outside `src`.
 
