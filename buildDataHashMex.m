@@ -1,15 +1,21 @@
 function outputFile = buildDataHashMex(outputFolder)
-    %buildDataHashMex - Compile the optional MD5 MEX accelerator
+    %buildDataHashMex - Compile the optional hashing MEX accelerator
     %   OUTPUTFILE = buildDataHashMex() builds DataHashCore in the repository
     %   root and returns its absolute path as a character vector. Requires
     %   MATLAB R2019b or later and a C compiler configured with MEX -setup C.
     %   MATLAB Coder and external hashing libraries are not required.
+    %   Build the same C source on each target OS: DataHashCore.mexw64 on
+    %   Windows and DataHashCore.mexa64 on Linux. Each binary checks CPU
+    %   features at runtime and uses the scalar core when unavailable.
     %
     %   OUTPUTFILE = buildDataHashMex(OUTPUTFOLDER) builds into an existing
     %   folder specified by a character vector or scalar string. Compilation
     %   uses the interleaved complex C Matrix API (-R2018a) and optimization
     %   (-O). An existing binary is replaced only after compilation succeeds.
     %   Compiler diagnostics propagate to the caller.
+    %   Keep baseline x64 compiler settings; global AVX/SHA flags are
+    %   rejected because they could put unsupported instructions in dispatch
+    %   or fallback code. MSVC 2017 or later and GCC support the x64 paths.
     %
     %   See also DataHash, buildDataHash, MEX, MEXEXT
 

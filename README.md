@@ -39,7 +39,11 @@ Supported hashing methods:
 - `MD2`
 - `MD5`
 
-Call `DataHash()` to inspect the available methods.
+Call `DataHash()` to inspect the available methods and runtime accelerator
+status. `CPUAccelerations` is a row cell array of character vectors listing
+the compiled extensions usable on the current CPU and operating system.
+A usable scalar-only MEX reports true availability with an empty
+acceleration list.
 
 Supported input types:
 

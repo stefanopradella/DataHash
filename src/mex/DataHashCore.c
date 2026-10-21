@@ -6,6 +6,8 @@
  * No external hashing library is used.
  * Copyright (c) 2026, Stefano Pradella. See ../../license.txt.
  *
+ * capabilities = DataHashCore()
+ * Reports logical SHA and AVX2 fields for runtime-usable compiled backends.
  * digest = DataHashCore(bytes, method)
  * context = DataHashCore(bytes, method, contextOrEmpty, uint8(0))
  * digest = DataHashCore(bytes, method, contextOrEmpty, uint8(1))
@@ -26,10 +28,31 @@
 #include <stdint.h>
 #include <string.h>
 
-/* Keep SHA instructions inside targeted functions so the MEX remains
- * loadable on x86-64 processors without them and on other architectures. */
-#if defined(__x86_64__) && defined(__GNUC__)
+/* Build the same source for Windows and Linux at the x64 baseline ISA.
+ * Extended instructions stay in non-inlined, runtime-guarded functions.
+ * Older compilers and other architectures retain the scalar core. */
+#if defined(_M_X64) && defined(_MSC_VER) && _MSC_VER >= 1910
+#include <intrin.h>
+#define DATAHASH_X86_INTRINSICS 1
+#elif defined(__x86_64__) && defined(__GNUC__)
+#include <cpuid.h>
+#define DATAHASH_X86_INTRINSICS 1
+#endif
+
+#if defined(DATAHASH_X86_INTRINSICS)
 #include <immintrin.h>
+#if defined(__GNUC__) || defined(__clang__)
+#define DATAHASH_TARGET_SHA __attribute__((target("sha"), noinline))
+#define DATAHASH_TARGET_AVX2 __attribute__((target("avx2"), noinline))
+#define DATAHASH_TARGET_XSAVE __attribute__((target("xsave"), noinline))
+#else
+#define DATAHASH_TARGET_SHA __declspec(noinline)
+#define DATAHASH_TARGET_AVX2 __declspec(noinline)
+#define DATAHASH_TARGET_XSAVE __declspec(noinline)
+#endif
+#if defined(__AVX__) || defined(__AVX2__) || defined(__SHA__)
+#error "Build DataHashCore without global AVX/SHA flags; use runtime dispatch."
+#endif
 #if !defined(DATAHASH_FORCE_SOFTWARE_SHA1)
 #define DATAHASH_SHA1_INTRINSICS 1
 #endif
@@ -39,6 +62,75 @@
 #if !defined(DATAHASH_FORCE_SOFTWARE_SHA512)
 #define DATAHASH_SHA512_AVX2 1
 #endif
+#endif
+
+#if defined(DATAHASH_SHA1_INTRINSICS) || defined(DATAHASH_SHA256_INTRINSICS) || \
+    defined(DATAHASH_SHA512_AVX2)
+#define DATAHASH_CPU_DISPATCH 1
+enum { CPU_SHA = 1, CPU_AVX2 = 2, CPU_CHECKED = 4 };
+
+static void readCpuId(unsigned int leaf, unsigned int values[4])
+{
+#if defined(_MSC_VER)
+    int registers[4];
+    unsigned int index;
+    __cpuidex(registers, (int)leaf, 0);
+    for (index = 0; index < 4; ++index) {
+        values[index] = (unsigned int)registers[index];
+    }
+#else
+    __cpuid_count(leaf, 0, values[0], values[1], values[2], values[3]);
+#endif
+}
+
+#if defined(DATAHASH_SHA512_AVX2)
+DATAHASH_TARGET_XSAVE
+static uint64_t readXcr0(void)
+{
+    return (uint64_t)_xgetbv(0);
+}
+#endif
+
+static unsigned int detectCpuFeatures(void)
+{
+    unsigned int values[4], leaf7Features;
+    unsigned int features = 0;
+#if defined(DATAHASH_SHA512_AVX2)
+    unsigned int leaf1Features;
+#endif
+    readCpuId(0, values);
+    if (values[0] < 7) {
+        return 0;
+    }
+#if defined(DATAHASH_SHA512_AVX2)
+    readCpuId(1, values);
+    leaf1Features = values[2];
+#endif
+    readCpuId(7, values);
+    leaf7Features = values[1];
+    if ((leaf7Features & (1u << 29)) != 0) {
+        features |= CPU_SHA;
+    }
+#if defined(DATAHASH_SHA512_AVX2)
+    /* XGETBV itself requires XSAVE/OSXSAVE. AVX2 also needs AVX and
+     * OS-enabled XMM/YMM state (XCR0 bits 1 and 2), not just CPUID AVX2. */
+    if ((leaf7Features & (1u << 5)) != 0 &&
+        (leaf1Features & 0x1c000000u) == 0x1c000000u &&
+        (readXcr0() & UINT64_C(6)) == UINT64_C(6)) {
+        features |= CPU_AVX2;
+    }
+#endif
+    return features;
+}
+
+static unsigned int cpuFeatures(void)
+{
+    static unsigned int cachedFeatures = 0;
+    if ((cachedFeatures & CPU_CHECKED) == 0) {
+        cachedFeatures = detectCpuFeatures() | CPU_CHECKED;
+    }
+    return cachedFeatures;
+}
 #endif
 
 enum {
@@ -346,7 +438,7 @@ static void sha1Compress(uint32_t state[5], const uint8_t *block)
  * SHA1MSG1/MSG2 expand four schedule words in that same lane order.
  * Instruction behavior follows Intel's SHA Extensions reference:
  * https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sha-extensions.html */
-__attribute__((target("sha")))
+DATAHASH_TARGET_SHA
 static void sha1CompressBlocksSha(uint32_t state[5], const uint8_t *bytes,
     size_t blockCount)
 {
@@ -524,7 +616,7 @@ static void sha256Compress(uint32_t state[8], const uint8_t *block)
  * SHA256MSG1/MSG2 expand four words; shifts align the intervening W[t-7] terms.
  * The state layout follows Intel's SHA Extensions reference:
  * https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sha-extensions.html */
-__attribute__((target("sha")))
+DATAHASH_TARGET_SHA
 static void sha256CompressBlocksSha(uint32_t state[8], const uint8_t *bytes,
     size_t blockCount)
 {
@@ -625,7 +717,7 @@ static void sha512Compress(uint64_t state[8], const uint8_t *block)
 #if defined(DATAHASH_SHA512_AVX2)
 /* Expand four independent block schedules in AVX2 lanes. Their compression
  * rounds still run in input order because each block depends on the prior state. */
-__attribute__((target("avx2")))
+DATAHASH_TARGET_AVX2
 static void sha512CompressBlocksAvx2(uint64_t state[8], const uint8_t *bytes,
     size_t blockCount)
 {
@@ -774,7 +866,7 @@ static void compressBlocks(HashContext *context, const uint8_t *bytes, size_t bl
             break;
         case METHOD_SHA1:
 #if defined(DATAHASH_SHA1_INTRINSICS)
-            if (__builtin_cpu_supports("sha")) {
+            if ((cpuFeatures() & CPU_SHA) != 0) {
                 sha1CompressBlocksSha(context->state.words32, bytes, blockCount);
                 break;
             }
@@ -785,7 +877,7 @@ static void compressBlocks(HashContext *context, const uint8_t *bytes, size_t bl
             break;
         case METHOD_SHA256:
 #if defined(DATAHASH_SHA256_INTRINSICS)
-            if (__builtin_cpu_supports("sha")) {
+            if ((cpuFeatures() & CPU_SHA) != 0) {
                 sha256CompressBlocksSha(context->state.words32, bytes, blockCount);
                 break;
             }
@@ -797,7 +889,7 @@ static void compressBlocks(HashContext *context, const uint8_t *bytes, size_t bl
         case METHOD_SHA384:
         case METHOD_SHA512:
 #if defined(DATAHASH_SHA512_AVX2)
-            if (__builtin_cpu_supports("avx2") && blockCount >= 4) {
+            if (blockCount >= 4 && (cpuFeatures() & CPU_AVX2) != 0) {
                 sha512CompressBlocksAvx2(context->state.words64, bytes, blockCount);
                 break;
             }
@@ -975,7 +1067,27 @@ void mexFunction(int outputCount, mxArray *outputs[], int inputCount,
     uint8_t method;
     int finalize = 1;
     if (inputCount != 2 && inputCount != 4) {
-        mexErrMsgIdAndTxt("DataHashCore:ArgumentCount", "Expected two or four inputs.");
+        if (inputCount == 0) {
+            const char *fields[] = {"SHA", "AVX2"};
+            int shaAvailable = 0, avx2Available = 0;
+#if defined(DATAHASH_CPU_DISPATCH)
+            unsigned int features = detectCpuFeatures();
+#endif
+            if (outputCount != 1) {
+                mexErrMsgIdAndTxt("DataHashCore:OutputCount", "Expected one output.");
+            }
+#if defined(DATAHASH_SHA1_INTRINSICS) || defined(DATAHASH_SHA256_INTRINSICS)
+            shaAvailable = (features & CPU_SHA) != 0;
+#endif
+#if defined(DATAHASH_SHA512_AVX2)
+            avx2Available = (features & CPU_AVX2) != 0;
+#endif
+            outputs[0] = mxCreateStructMatrix(1, 1, 2, fields);
+            mxSetField(outputs[0], 0, "SHA", mxCreateLogicalScalar(shaAvailable));
+            mxSetField(outputs[0], 0, "AVX2", mxCreateLogicalScalar(avx2Available));
+            return;
+        }
+        mexErrMsgIdAndTxt("DataHashCore:ArgumentCount", "Expected zero, two or four inputs.");
     }
     if (outputCount != 1) {
         mexErrMsgIdAndTxt("DataHashCore:OutputCount", "Expected one output.");

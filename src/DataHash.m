@@ -10,7 +10,11 @@ function result = DataHash(data, method, inputType, outputFormat, options)
 %   even when a compatible MEX accelerator is available. ForceNative accepts
 %   a logical scalar or numeric 0 or 1 and defaults to false.
 %
-%   DATAHASH() returns version information and the supported methods.
+%   DATAHASH() returns version information, supported methods, and runtime
+%   accelerator availability. AcceleratorAvailable is true when a compatible
+%   MEX is available. CPUAccelerations is a row cell array of character
+%   vectors naming usable extensions ('SHA' and 'AVX2') for that MEX on
+%   this CPU and operating system; it is empty if none are available.
 
     arguments
         data = []
@@ -25,12 +29,16 @@ function result = DataHash(data, method, inputType, outputFormat, options)
     end
 
     if nargin == 0
-        % If called without arguments, DataHash returns a structure
-        % containing informations about the version.
-        % The output differs between versions of this function.
         result = struct('HashVersion', 5, ...
                         'Date', [2026, 9, 16], ...
-                        'HashMethod', {{'MD2', 'MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'}});
+                        'HashMethod', {{'MD2', 'MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'}}, ...
+                        'AcceleratorAvailable', hasDataHashCore(), ...
+                        'CPUAccelerations', {cell(1, 0)});
+        if result.AcceleratorAvailable
+            cpuFeatures = DataHashCore();
+            accelerationNames = {'SHA', 'AVX2'};
+            result.CPUAccelerations = accelerationNames([cpuFeatures.SHA, cpuFeatures.AVX2]);
+        end
         return;
     end
 
