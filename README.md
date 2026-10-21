@@ -97,11 +97,12 @@ assert(strcmp(asciiHash, byteHash));
 
 # Building the release files
 
-The authored functions live under `src`. From the repository root, assemble the standalone distribution file with:
+The authored functions live under `src`. From the repository root, build the
+standalone distribution and optional platform accelerator with:
 
 ```matlab
 outputFile = buildDataHash();
-acceleratorFile = buildDataHashMex();
+acceleratorFile = buildDataHashMex(); % Optional; requires a configured C compiler.
 ```
 
 Both builders write to `release/`, creating it if necessary. The standalone

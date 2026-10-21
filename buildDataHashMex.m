@@ -1,7 +1,8 @@
 function outputFile = buildDataHashMex(outputFolder)
     %buildDataHashMex - Compile the optional hashing MEX accelerator
-    %   OUTPUTFILE = buildDataHashMex() builds DataHashCore in the repository
-    %   root and returns its absolute path as a character vector. Requires
+    %   OUTPUTFILE = buildDataHashMex() builds DataHashCore in the repository's
+    %   release folder and returns its absolute path as a character vector.
+    %   The default release folder is created if necessary. Requires
     %   MATLAB R2019b or later and a C compiler configured with MEX -setup C.
     %   MATLAB Coder and external hashing libraries are not required.
     %   Build the same C source on each target OS: DataHashCore.mexw64 on
@@ -23,7 +24,14 @@ function outputFile = buildDataHashMex(outputFolder)
 
     arguments
         outputFolder (1, 1) string = ...
-            string(fileparts(mfilename('fullpath')))
+            string(fullfile(fileparts(mfilename('fullpath')), 'release'))
+    end
+
+    if nargin == 0 && ~isfolder(outputFolder)
+        [status, message] = mkdir(char(outputFolder));
+        if ~status
+            error('buildDataHashMex:CreateFolder', '%s', message);
+        end
     end
 
     % FILEATTRIB retains R2019b support and resolves an absolute folder name.

@@ -9,6 +9,10 @@ results = runtests('tests');
 assertSuccess(results);
 ```
 
+To exercise the optional accelerator throughout the suites, run
+`buildDataHashMex()` and add `release/` to the MATLAB path first. Accelerator
+checks also locate the default binary in `release/` temporarily.
+
 Each class uses a path fixture to expose `src` and its algorithm folders, then restores the original path. File tests use temporary folders and close files on every exit path. The command above does not include the separate `tests/performance` folder.
 
 The 24 streaming cases are tagged `FileStreaming` and can take several minutes with the native backends. For a quick correctness run that excludes only those cases:

@@ -236,6 +236,21 @@ classdef DataHashTest < matlab.unittest.TestCase
             testCase.verifyEqual(info.CPUAccelerations, cell(1, 0));
         end
 
+        function standaloneBuildDestinations(testCase)
+            folder = testCase.installBuildSources();
+
+            outputFile = buildDataHash();
+            customFile = buildDataHash(fullfile(folder.Folder, 'DataHash.m'));
+
+            testCase.verifyEqual(outputFile, fullfile(folder.Folder, 'release', 'DataHash.m'));
+            testCase.verifyTrue(isfile(outputFile));
+            testCase.verifyEqual(customFile, fullfile(folder.Folder, 'DataHash.m'));
+            testCase.verifyEqual(fileread(outputFile), fileread(customFile));
+            testCase.verifyError(@() buildDataHash( ...
+                fullfile(folder.Folder, 'missing', 'DataHash.m')), ...
+                'buildDataHash:MissingOutputFolder');
+        end
+
         function trailingDefaults(testCase, defaultCase)
             data = uint8('abc');
             actual = DataHash(data, defaultCase.options{:});
@@ -311,6 +326,25 @@ classdef DataHashTest < matlab.unittest.TestCase
     end
 
     methods (Test, TestTags = {'MD5Accelerator'})
+        function acceleratorBuildDestinations(testCase)
+            testCase.assumeNotEmpty(mex.getCompilerConfigurations('C', 'Selected'), ...
+                'A configured C compiler is required for MEX build checks.');
+            folder = testCase.installBuildSources();
+            testCase.addTeardown(@clearCore);
+            binaryName = ['DataHashCore.', mexext];
+
+            outputFile = buildDataHashMex();
+            customFile = buildDataHashMex(folder.Folder);
+
+            testCase.verifyEqual(outputFile, fullfile(folder.Folder, 'release', binaryName));
+            testCase.verifyTrue(isfile(outputFile));
+            testCase.verifyEqual(customFile, fullfile(folder.Folder, binaryName));
+            digest = DataHashCore(uint8('abc'), uint8(5));
+            testCase.verifyEqual(sprintf('%.2x', digest), '900150983cd24fb0d6963f7d28e17f72');
+            testCase.verifyError(@() buildDataHashMex( ...
+                fullfile(folder.Folder, 'missing')), 'buildDataHashMex:MissingOutputFolder');
+        end
+
         function acceleratorCpuFeatureChecks(testCase)
             testCase.installCpuDispatchProbe();
             % CPU flags: SHA=1, AVX2=2. XCR0 must enable both XMM and YMM.
@@ -520,6 +554,25 @@ classdef DataHashTest < matlab.unittest.TestCase
     end
 
     methods (Access = private)
+        function folder = installBuildSources(testCase)
+            arguments
+                testCase
+            end
+            repositoryFolder = fileparts(fileparts(mfilename('fullpath')));
+            folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            [status, message] = copyfile(fullfile(repositoryFolder, 'src'), ...
+                fullfile(folder.Folder, 'src'));
+            testCase.assertTrue(status, message);
+            for fileName = {'buildDataHash.m', 'buildDataHashMex.m'}
+                [status, message] = copyfile(fullfile(repositoryFolder, fileName{1}), folder.Folder);
+                testCase.assertTrue(status, message);
+            end
+            testCase.addTeardown(@clearBuildFunctions);
+            testCase.applyFixture(matlab.unittest.fixtures.CurrentFolderFixture(folder.Folder));
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(folder.Folder));
+            clearBuildFunctions();
+        end
+
         function installCpuDispatchProbe(testCase, outputName)
             arguments
                 testCase
@@ -678,7 +731,13 @@ classdef DataHashTest < matlab.unittest.TestCase
 
         function requireAccelerator(testCase)
             repositoryFolder = fileparts(fileparts(mfilename('fullpath')));
-            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(repositoryFolder));
+            releaseFolder = fullfile(repositoryFolder, 'release');
+            if isfolder(releaseFolder)
+                implementationFolder = fileparts(which('DataHash'));
+                testCase.applyFixture(matlab.unittest.fixtures.PathFixture(releaseFolder));
+                % The release folder also contains the standalone function.
+                testCase.applyFixture(matlab.unittest.fixtures.PathFixture(implementationFolder));
+            end
             testCase.assumeEqual(exist('DataHashCore', 'file'), 3, ...
                 'Optional MEX accelerator not found. Run buildDataHashMex first.');
         end
@@ -781,6 +840,12 @@ end
 
 function clearCore()
     clear DataHashCore;
+end
+
+function clearBuildFunctions()
+    arguments
+    end
+    clear buildDataHash buildDataHashMex;
 end
 
 function clearCpuDispatchProbe()
