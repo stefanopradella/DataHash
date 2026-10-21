@@ -2,9 +2,12 @@
 
 DataHash is a hashing utility originally developed by Jan Simon.
 
-# Usage
+# Installation and Usage
+Download the [latest release](https://github.com/stefanopradella/datahash/releases/latest). This contains the main MATLAB function and the optional compiled MEX accelerators for both Windows and Linux.
 
-Put `DataHash.m` in your MATLAB folder or add its folder to the MATLAB path.
+DataHash is designed to work regardless of the presence of the MEX file; the accelerator, however, greatly improves hashing speed.
+
+To use the function, put `DataHash.m` and, optionally, the MEX accelerators in your MATLAB folder or add their folder to the MATLAB path.
 
 ```matlab
 hash = DataHash(data, method, inputType, outputFormat)
@@ -92,17 +95,29 @@ byteHash = DataHash(uint8('abc'), 'SHA-256', 'bin');
 assert(strcmp(asciiHash, byteHash));
 ```
 
-# Building the standalone file
+# Building the release files
 
 The authored functions live under `src`. From the repository root, assemble the standalone distribution file with:
 
 ```matlab
 outputFile = buildDataHash();
+acceleratorFile = buildDataHashMex();
 ```
 
-This creates `build/DataHash.m`. Distribute it with `license.txt`; edit sources under `src` and rebuild.
+Both builders write to `release/`, creating it if necessary. The standalone
+builder creates `release/DataHash.m`. The optional MEX builder creates
+`release/DataHashCore.mexa64` on Linux or `release/DataHashCore.mexw64` on
+Windows, using the same `src/mex/DataHashCore.c`. Run the MEX build on each
+target platform with a C compiler configured using `mex -setup C`.
+
+Use the generated files together in `release/`, or add that folder to the
+MATLAB path. Distribute them with `license.txt`; edit sources under `src`
+and rebuild. Building the standalone file does not require a compiler.
 
 To use another destination, pass the path to a file named `DataHash.m`. Its parent folder must already exist, and the destination must be outside `src`.
+
+For a custom MEX destination, pass an existing folder to
+`buildDataHashMex(outputFolder)`. Explicit destinations are preserved.
 
 The assembler uses an explicit source list and rejects missing or unlisted MATLAB files under `src`. Identical sources produce identical UTF-8 output with LF line endings. The destination is replaced after the complete file has been written and closed successfully.
 
