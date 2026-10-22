@@ -122,14 +122,17 @@ For a custom MEX destination, pass an existing folder to
 
 The assembler uses an explicit source list and rejects missing or unlisted MATLAB files under `src`. Identical sources produce identical UTF-8 output with LF line endings. The destination is replaced after the complete file has been written and closed successfully.
 
-# Development Philosophy
+# Development Philosophy and Version Support
 
 DataHash is designed as a single, portable function with no dependencies beyond MATLAB itself.
-Starting with version 1.9.0, DataHash requires MATLAB R2019b or later and has no JRE dependency, allowing it to run in a default MATLAB R2026b installation, where Java is no longer included by default.
 
-Release packages for version 1.9.0 and later also provide the optional `DataHashCore` MEX accelerator. It accelerates only the hashing core, while argument parsing and serialization remain in MATLAB. If a compatible MEX binary is unavailable, DataHash uses its native MATLAB implementation, preserving the portable single-file workflow without making platform-specific binaries mandatory.
+Starting with version 1.9.0, DataHash requires MATLAB R2019b or later and runs without a JRE. It therefore works in a default MATLAB R2026b installation, where Java is no longer included.
 
-For older MATLAB releases, use v1.8.0, which requires Java and was tested on MATLAB R2009a, R2015b, R2016b, and R2018b.
+Release packages for version 1.9.0 and later include the optional `DataHashCore` MEX accelerator. It accelerates the hashing core, while argument parsing and serialization remain in MATLAB. If a compatible MEX binary is unavailable, DataHash uses its native MATLAB implementation, preserving the portable single-file workflow.
+
+DataHash is developed using MATLAB R2026b, which is also used to build the distributed MEX binaries.
+
+For MATLAB releases older than R2019b, use v1.8.0. It requires Java and was tested on MATLAB R2009a, R2015b, R2016b, and R2018b.
 
 # Tests
 
