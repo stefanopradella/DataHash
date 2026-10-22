@@ -35,7 +35,10 @@
 #include <intrin.h>
 #define DATAHASH_X86_INTRINSICS 1
 #elif defined(__x86_64__) && defined(__GNUC__)
+/* Older MinGW cpuid.h has no include guard; preserve any existing override. */
+#if !defined(__cpuid_count)
 #include <cpuid.h>
+#endif
 #define DATAHASH_X86_INTRINSICS 1
 #endif
 
@@ -87,7 +90,13 @@ static void readCpuId(unsigned int leaf, unsigned int values[4])
 DATAHASH_TARGET_XSAVE
 static uint64_t readXcr0(void)
 {
+#if defined(__GNUC__) && !defined(_xgetbv)
+    /* Older MinGW immintrin.h omits _xgetbv; use the compiler builtin.
+     * Keep explicit intrinsic macro overrides available to dispatch probes. */
+    return (uint64_t)__builtin_ia32_xgetbv(0);
+#else
     return (uint64_t)_xgetbv(0);
+#endif
 }
 #endif
 
