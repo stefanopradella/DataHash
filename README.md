@@ -1,5 +1,7 @@
 # DataHash
 
+[![View DataHash on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://www.mathworks.com/matlabcentral/fileexchange/31272-datahash)
+
 DataHash is a hashing utility originally developed by Jan Simon.
 
 # Installation and Usage
