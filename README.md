@@ -5,11 +5,17 @@
 DataHash is a hashing utility originally developed by Jan Simon.
 
 # Installation and Usage
-Download the [latest release](https://github.com/stefanopradella/datahash/releases/latest). This contains the main MATLAB function and the optional compiled MEX accelerators for both Windows and Linux.
+DataHash is available as a MATLAB package or a standalone function, both with optional MEX acceleration.
 
-DataHash is designed to work regardless of the presence of the MEX file; the accelerator, however, greatly improves hashing speed.
+Download the [latest release](https://github.com/stefanopradella/datahash/releases/latest). Double-click `DataHash.mltbx` in MATLAB to install the package. For standalone use, put `DataHash.m` and optionally the MEX file for your OS in a folder on the MATLAB path.
 
-To use the function, put `DataHash.m` and, optionally, the MEX accelerators in your MATLAB folder or add their folder to the MATLAB path.
+Alternatively, on MATLAB R2026b or later, install the package from File Exchange:
+
+```matlab
+mpminstall("datahash")
+```
+
+MEX accelerators are provided for Windows and Linux. Without a compatible MEX file, DataHash uses its native MATLAB implementation.
 
 ```matlab
 hash = DataHash(data, method, inputType, outputFormat)
@@ -17,7 +23,7 @@ hash = DataHash(data, method, inputType, outputFormat)
 
 Positional options must be supplied in the order shown, as character vectors or scalar strings. Only trailing positional arguments can be omitted. By default, `method` is `MD5`, `inputType` is `array`, and `outputFormat` is lowercase `hex`. To select an output format, supply the method and input type too. Legacy options structures are no longer accepted.
 
-Append the optional name-value argument `'ForceNative', true` to use the native MATLAB implementation even when a compatible MEX accelerator is present. It accepts a logical scalar or numeric `0` or `1` and defaults to `false`, allowing automatic accelerator selection. This calling syntax supports MATLAB R2019b and later.
+Append the optional name-value argument `'ForceNative', true` to use the native MATLAB implementation even when a compatible MEX accelerator is present.
 
 ```matlab
 hash = DataHash('license.txt', 'MD5', 'file', 'ForceNative', true);
