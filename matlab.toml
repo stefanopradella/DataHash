@@ -22,6 +22,25 @@ startup-folder = "."
 [project.shortcuts.Build]
 "Build DataHash" = {path = "buildDataHash.m"}
 "Build MEX accelerator" = {path = "buildDataHashMex.m"}
+"Build toolbox" = {path = "buildDataHashToolbox.m"}
 
 [project.shortcuts.Test]
 "Run Tests" = {path = "tests/DataHashTest.m"}
+
+[[package]]
+name = "datahash"
+display-name = "DataHash"
+version = "1.9.1"
+id = "e57a3d4b-4a80-11e4-9553-005056977bd0"
+package-root = "release"
+summary = "MD5 and SHA hashing for MATLAB arrays, structures, cells, and files."
+description = "Hash MATLAB data and files without Java using MD2, MD5, SHA-1, SHA-256, SHA-384, or SHA-512, with optional MEX acceleration."
+# R2019b and later
+release-compatibility = ">=19.2.*"
+supported-platforms = ["windows", "macos", "linux"]
+output-folder = "release"
+output-file-name = "DataHash.mltbx"
+provider = {name = "Stefano Pradella", email = "stefano.pradella.97@gmail.com"}
+
+[package.folders]
+path = ["release"]

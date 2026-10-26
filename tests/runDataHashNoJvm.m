@@ -50,6 +50,8 @@ function runChecks(repositoryFolder)
         fullfile(repositoryFolder, 'tests', 'DataHashLegacyCompatibilityTest.m')};
     hasFixedPoint = exist('fi', 'file') == 2 && license('test', 'Fixed_Point_Toolbox');
     fprintf('Fixed-Point Designer available: %d\n', hasFixedPoint);
+    hasToolboxPackaging = ~verLessThan('matlab', '26.2');
+    fprintf('Toolbox packaging available: %d\n', hasToolboxPackaging);
 
     for implementationIndex = 1:2
         path(isolatedPath);
@@ -81,7 +83,8 @@ function runChecks(repositoryFolder)
         assert(isequal(rng, originalRng) && isequal(openFiles(), originalFiles), ...
             'The suites changed RNG state or leaked file handles.');
         optional = contains({results.Name}, 'fixedPoint', 'IgnoreCase', true);
-        allowedSkips = optional & ~hasFixedPoint;
+        toolboxChecks = contains({results.Name}, 'DataHashTest/toolbox');
+        allowedSkips = (optional & ~hasFixedPoint) | (toolboxChecks & ~hasToolboxPackaging);
         assert(~any([results.Failed]) && ~any([results.Incomplete] & ~allowedSkips), ...
             '%s has failures or unexplained incomplete tests.', label);
     end
