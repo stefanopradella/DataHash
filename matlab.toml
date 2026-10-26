@@ -35,6 +35,7 @@ id = "e57a3d4b-4a80-11e4-9553-005056977bd0"
 package-root = "release"
 summary = "MD5 and SHA hashing for MATLAB arrays, structures, cells, and files."
 description = "Hash MATLAB data and files without Java using MD2, MD5, SHA-1, SHA-256, SHA-384, or SHA-512, with optional MEX acceleration."
+preview-image-file = "logo.jpg"
 # R2019b and later
 release-compatibility = ">=19.2.*"
 supported-platforms = ["windows", "macos", "linux"]

@@ -339,6 +339,12 @@ classdef DataHashTest < matlab.unittest.TestCase
             extractedFolder = fullfile(folder.Folder, 'extracted');
             unzip(outputFile, extractedFolder);
             testCase.verifyToolboxAssets(folder.Folder, extractedFolder);
+            testCase.verifyEqual(readToolboxTestFile(fullfile(extractedFolder, ...
+                'metadata', 'primaryScreenShot.jpg')), ...
+                readToolboxTestFile(fullfile(folder.Folder, 'logo.jpg')));
+            extensions = jsondecode(fileread(fullfile(extractedFolder, ...
+                'fsroot', 'resources', 'extensions.json')));
+            testCase.verifyEqual(extensions.mw.addons.previewImage, 'screenshot.jpg');
             requirements = fileread(fullfile(extractedFolder, 'metadata', 'systemRequirements.xml'));
             testCase.verifyTrue(contains(requirements, 'start="R2019b"'));
             configuration = fileread(fullfile(extractedFolder, 'metadata', 'configuration.xml'));
@@ -631,7 +637,7 @@ classdef DataHashTest < matlab.unittest.TestCase
                 'TOML toolbox packaging requires MATLAB R2026b or later.');
             folder = testCase.installBuildSources();
             repositoryFolder = fileparts(fileparts(mfilename('fullpath')));
-            for fileName = {'license.txt', 'matlab.toml'}
+            for fileName = {'license.txt', 'logo.jpg', 'matlab.toml'}
                 [status, message] = copyfile(fullfile(repositoryFolder, fileName{1}), folder.Folder);
                 testCase.assertTrue(status, message);
             end
