@@ -1,0 +1,5 @@
+release/DataHash.m
+release/DataHash.mltbx
+release/DataHashCore.mexa64
+release/DataHashCore.mexw64
+release/license.txt
