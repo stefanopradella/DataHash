@@ -30,7 +30,7 @@ startup-folder = "."
 [[package]]
 name = "datahash"
 display-name = "DataHash"
-version = "1.9.1"
+version = "1.9.2"
 id = "e57a3d4b-4a80-11e4-9553-005056977bd0"
 package-root = "release"
 summary = "MD5 and SHA hashing for MATLAB arrays, structures, cells, and files."

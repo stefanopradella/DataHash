@@ -35,7 +35,7 @@ classdef DataHashTest < matlab.unittest.TestCase
         invalidNativeFlag = {2, -1, NaN, Inf, 1i, 'true', [false, true], [], {true}}
         method = {'MD2', 'MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'}
         toolboxAsset = {'DataHash.m', 'DataHashCore.mexa64', ...
-            'DataHashCore.mexw64', 'license.txt'}
+            'DataHashCore.mexw64', 'license.txt', 'README.md'}
     end
 
     methods (Test)
@@ -335,7 +335,7 @@ classdef DataHashTest < matlab.unittest.TestCase
 
             testCase.verifyEqual(outputFile, ...
                 fullfile(folder.Folder, 'release', 'DataHash.mltbx'));
-            testCase.verifyEqual(matlab.addons.toolbox.toolboxVersion(outputFile), '1.9.1');
+            testCase.verifyEqual(matlab.addons.toolbox.toolboxVersion(outputFile), '1.9.2');
             extractedFolder = fullfile(folder.Folder, 'extracted');
             unzip(outputFile, extractedFolder);
             testCase.verifyToolboxAssets(folder.Folder, extractedFolder);
@@ -357,7 +357,7 @@ classdef DataHashTest < matlab.unittest.TestCase
             folder = testCase.installToolboxBuildSources();
             configuration = replace(fileread('matlab.toml'), ...
                 ["name = ""datahash""", "display-name = ""DataHash""", ...
-                "version = ""1.9.1""", "e57a3d4b-4a80-11e4-9553-005056977bd0", ...
+                "version = ""1.9.2""", "e57a3d4b-4a80-11e4-9553-005056977bd0", ...
                 "MD5 and SHA hashing for MATLAB arrays, structures, cells, and files.", ...
                 "Hash MATLAB data and files without Java using MD2, MD5, SHA-1, SHA-256, SHA-384, or SHA-512, with optional MEX acceleration.", ...
                 ">=19.2.*", "[""windows"", ""macos"", ""linux""]", ...
@@ -390,7 +390,7 @@ classdef DataHashTest < matlab.unittest.TestCase
             properties = fileread(fullfile(extractedFolder, 'metadata', 'addonProperties.xml'));
             testCase.verifyTrue(contains(properties, 'Configured description'));
             testCase.verifyEqual(fileread(fullfile(extractedFolder, ...
-                'fsroot', 'README.md')), 'Configured description');
+                'fsroot', 'README.md')), fileread('README.md'));
             requirements = fileread(fullfile(extractedFolder, 'metadata', 'systemRequirements.xml'));
             testCase.verifyTrue(contains(requirements, 'start="R2024a"'));
             testCase.verifyTrue(contains(requirements, 'end="R2025b"'));
@@ -637,7 +637,7 @@ classdef DataHashTest < matlab.unittest.TestCase
                 'TOML toolbox packaging requires MATLAB R2026b or later.');
             folder = testCase.installBuildSources();
             repositoryFolder = fileparts(fileparts(mfilename('fullpath')));
-            for fileName = {'license.txt', 'logo.jpg', 'matlab.toml'}
+            for fileName = {'license.txt', 'logo.jpg', 'matlab.toml', 'README.md'}
                 [status, message] = copyfile(fullfile(repositoryFolder, fileName{1}), folder.Folder);
                 testCase.assertTrue(status, message);
             end
@@ -647,7 +647,7 @@ classdef DataHashTest < matlab.unittest.TestCase
             writeToolboxTestFile(fullfile(releaseFolder, 'DataHashCore.mexa64'), 'Linux binary fixture');
             writeToolboxTestFile(fullfile(releaseFolder, 'DataHashCore.mexw64'), 'Windows binary fixture');
             writeToolboxTestFile(fullfile(releaseFolder, 'unrelated.txt'), 'Must not ship');
-            writeToolboxTestFile(fullfile(releaseFolder, 'README.md'), 'Repository README must not ship');
+            writeToolboxTestFile(fullfile(releaseFolder, 'README.md'), 'Stale README must be replaced');
         end
 
         function verifyToolboxAssets(testCase, repositoryFolder, extractedFolder)
@@ -659,7 +659,7 @@ classdef DataHashTest < matlab.unittest.TestCase
             packageFolder = fullfile(extractedFolder, 'fsroot');
             files = dir(packageFolder);
             testCase.verifyEqual(sort({files(~[files.isdir]).name}), ...
-                sort([testCase.toolboxAsset, {'README.md'}]));
+                sort(testCase.toolboxAsset));
             for assetIndex = 1:numel(testCase.toolboxAsset)
                 assetName = testCase.toolboxAsset{assetIndex};
                 actual = readToolboxTestFile(fullfile(packageFolder, assetName));
@@ -668,8 +668,6 @@ classdef DataHashTest < matlab.unittest.TestCase
             end
             metadata = jsondecode(fileread(fullfile(packageFolder, 'resources', 'mpackage.json')));
             testCase.verifyEqual(metadata.readme, 'README.md');
-            description = 'Hash MATLAB data and files without Java using MD2, MD5, SHA-1, SHA-256, SHA-384, or SHA-512, with optional MEX acceleration.';
-            testCase.verifyEqual(fileread(fullfile(packageFolder, 'README.md')), description);
         end
 
         function folder = installBuildSources(testCase)
@@ -969,7 +967,7 @@ function fileName = findToolboxAsset(repositoryFolder, assetName)
         repositoryFolder
         assetName
     end
-    if strcmp(assetName, 'license.txt')
+    if any(strcmp(assetName, {'license.txt', 'README.md'}))
         fileName = fullfile(repositoryFolder, assetName);
     else
         fileName = fullfile(repositoryFolder, 'release', assetName);
