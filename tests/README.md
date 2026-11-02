@@ -67,6 +67,8 @@ Fixed-point data is constructed after an availability assumption, so unavailable
 
 `DataHashTest.m` checks digest and serialization known answers, digest block boundaries, file backends, all six output formats, Base64 padding, positional defaults, character-vector/string options, aliases and casing, invalid inputs, missing files, empty binary inputs, array shape, and struct field ordering.
 
+SHA method aliases (`SHA1`, `SHA256`, `SHA384`, and `SHA512`) are checked in upper, lower, and mixed case, as character vectors and scalar strings, with native and automatic backend selection. These checks cover empty, binary, ASCII, array, and file inputs; malformed spellings remain invalid.
+
 File streaming cases cover `2^20 - 1`, `2^20`, `2^20 + 1`, and `2 * 2^20 + 17` bytes for each algorithm. For zero-based byte offset `i`, the payload is `mod(37*i + floor(i/251) + 17, 256)`, so successive read chunks have different contents. Each case checks the file digest and binary memory digest against a stored independent answer and against each other.
 
 The streaming answers were obtained with Java 25.0.4.1 `MessageDigest` using the SUN provider. Python 3.14.4 `hashlib` independently agreed with all MD5 and SHA answers. Both tools were used only during authoring; the tests need neither at runtime.

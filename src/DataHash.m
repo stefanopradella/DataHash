@@ -5,6 +5,8 @@ function result = DataHash(data, method, inputType, outputFormat, options)
 %   and "hex", respectively.
 %   Method, input type, and output format are positional. Only trailing
 %   positional arguments can be omitted.
+%   Method names are case-insensitive. SHA1, SHA256, SHA384, and SHA512 are
+%   accepted aliases for the corresponding hyphenated SHA names.
 %
 %   RESULT = DATAHASH(..., 'ForceNative', true) uses native MATLAB hashing
 %   even when a compatible MEX accelerator is available. ForceNative accepts
@@ -19,7 +21,8 @@ function result = DataHash(data, method, inputType, outputFormat, options)
     arguments
         data = []
         method (1, 1) string {mustBeOneOf(method, ...
-            ["MD2", "MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512"])}      = "MD5"
+            ["MD2", "MD5", "SHA-1", "SHA1", "SHA-256", "SHA256", ...
+            "SHA-384", "SHA384", "SHA-512", "SHA512"])}                    = "MD5"
         inputType (1, 1) string {mustBeOneOf(inputType, ...
             ["array", "file", "bin", "binary", "asc", "ascii"])}            = "array"
         outputFormat (1, 1) string {mustBeOneOf(outputFormat, ...
@@ -88,6 +91,16 @@ function [method, inputType, outputFormat] = parseFunctionInputs( ...
 % data format limitations
 
     method = upper(method);
+    switch method
+        case "SHA1"
+            method = "SHA-1";
+        case "SHA256"
+            method = "SHA-256";
+        case "SHA384"
+            method = "SHA-384";
+        case "SHA512"
+            method = "SHA-512";
+    end
     inputType = lower(inputType);
     if inputType == "binary"
         inputType = "bin";

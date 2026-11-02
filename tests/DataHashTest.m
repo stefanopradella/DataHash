@@ -14,6 +14,10 @@ classdef DataHashTest < matlab.unittest.TestCase
         defaultCase = defaultCases()
         optionCase = optionCases()
         optionRepresentation = struct('characterVector', @char, 'scalarString', @string)
+        shaAliasCase = shaAliasCases()
+        shaAliasCasing = struct('uppercase', @upper, 'lowercase', @lower, ...
+            'mixedCase', @(alias) strrep(alias, 'SHA', 'sHa'))
+        forceNative = {false, true}
         invalidOptionCase = invalidOptionCases()
         invalidBinaryData = invalidBinaryInputs()
         invalidAsciiData = invalidAsciiInputs()
@@ -267,6 +271,33 @@ classdef DataHashTest < matlab.unittest.TestCase
             testCase.verifyEqual(actual, optionCase.expected);
         end
 
+        function shaMethodAliases(testCase, shaAliasCase, shaAliasCasing, ...
+                optionRepresentation, forceNative)
+            alias = optionRepresentation(shaAliasCasing(shaAliasCase.alias));
+
+            emptyHash = DataHash(uint8([]), alias, 'bin', 'ForceNative', forceNative);
+            binaryHash = DataHash(uint8('abc'), alias, 'bin', 'ForceNative', forceNative);
+            asciiHash = DataHash('abc', alias, 'ascii', 'ForceNative', forceNative);
+
+            testCase.verifyEqual(emptyHash, shaAliasCase.emptyExpected);
+            testCase.verifyEqual(binaryHash, shaAliasCase.expected);
+            testCase.verifyEqual(asciiHash, shaAliasCase.expected);
+
+            arrayHash = DataHash(uint8('abc'), alias, 'array', 'uint8', ...
+                'ForceNative', forceNative);
+            expectedArray = DataHash(uint8('abc'), shaAliasCase.method, ...
+                'array', 'uint8', 'ForceNative', true);
+            testCase.verifyEqual(arrayHash, expectedArray);
+            testCase.verifyClass(arrayHash, 'uint8');
+            testCase.verifySize(arrayHash, size(expectedArray));
+
+            fileName = testCase.writeTemporaryFile(uint8('abc'));
+            originalFiles = testCase.trackOpenFiles();
+            fileHash = DataHash(fileName, alias, 'file', 'ForceNative', forceNative);
+            testCase.verifyEqual(fileHash, shaAliasCase.expected);
+            testCase.verifyEqual(openFiles(), originalFiles);
+        end
+
         function invalidOptions(testCase, invalidOptionCase)
             testCase.verifyError(@() DataHash([], invalidOptionCase{:}), ...
                 'DataHash:InvalidOption');
@@ -335,7 +366,7 @@ classdef DataHashTest < matlab.unittest.TestCase
 
             testCase.verifyEqual(outputFile, ...
                 fullfile(folder.Folder, 'release', 'DataHash.mltbx'));
-            testCase.verifyEqual(matlab.addons.toolbox.toolboxVersion(outputFile), '1.9.2');
+            testCase.verifyEqual(matlab.addons.toolbox.toolboxVersion(outputFile), '1.9.3');
             extractedFolder = fullfile(folder.Folder, 'extracted');
             unzip(outputFile, extractedFolder);
             testCase.verifyToolboxAssets(folder.Folder, extractedFolder);
@@ -357,7 +388,7 @@ classdef DataHashTest < matlab.unittest.TestCase
             folder = testCase.installToolboxBuildSources();
             configuration = replace(fileread('matlab.toml'), ...
                 ["name = ""datahash""", "display-name = ""DataHash""", ...
-                "version = ""1.9.2""", "e57a3d4b-4a80-11e4-9553-005056977bd0", ...
+                "version = ""1.9.3""", "e57a3d4b-4a80-11e4-9553-005056977bd0", ...
                 "MD5 and SHA hashing for MATLAB arrays, structures, cells, and files.", ...
                 "Hash MATLAB data and files without Java using MD2, MD5, SHA-1, SHA-256, SHA-384, or SHA-512, with optional MEX acceleration.", ...
                 ">=19.2.*", "[""windows"", ""macos"", ""linux""]", ...
@@ -1477,11 +1508,29 @@ end
 function namedCases = invalidOptionCases()
     namedCases = struct;
     namedCases.unknownMethod = {'SHA-999'};
+    namedCases.unsupportedShaAlias = {'SHA224'};
+    namedCases.repeatedShaHyphen = {'SHA--1'};
+    namedCases.shaUnderscore = {'SHA_256'};
+    namedCases.shaWhitespace = {'SHA 384'};
     namedCases.inputInMethodPosition = {'bin'};
     namedCases.outputInMethodPosition = {'short'};
     namedCases.outputInInputPosition = {'MD5', 'short'};
     namedCases.unknownInputType = {'MD5', 'unknown'};
     namedCases.unknownOutputFormat = {'MD5', 'array', 'unknown'};
+end
+
+function namedCases = shaAliasCases()
+    vectors = digestCases();
+    names = {'sha1', 'sha256', 'sha384', 'sha512'};
+    namedCases = struct;
+    for methodIndex = 1:numel(names)
+        name = names{methodIndex};
+        abc = vectors.([name, 'Abc']);
+        empty = vectors.([name, 'Empty']);
+        namedCases.(name) = struct('alias', upper(name), ...
+            'method', abc.method, 'expected', abc.expected, ...
+            'emptyExpected', empty.expected);
+    end
 end
 
 function namedInputs = invalidBinaryInputs()
