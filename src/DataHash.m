@@ -8,6 +8,13 @@ function result = DataHash(data, method, inputType, outputFormat, options)
 %   Method names are case-insensitive. SHA1, SHA256, SHA384, and SHA512 are
 %   accepted aliases for the corresponding hyphenated SHA names.
 %
+%   PASSED = DATAHASH(FILENAME, 'sha256sum') verifies a SHA-256
+%   checksum manifest, prints each file's status as with sha256sum -c, and
+%   returns a logical scalar that is true only if every file matches.
+%   Relative paths use the current folder; files are read as binary.
+%   Escaped/tagged checksum formats are unsupported. Empty or malformed
+%   manifests raise DataHash:InvalidChecksumFile.
+%
 %   RESULT = DATAHASH(..., 'ForceNative', true) uses native MATLAB hashing
 %   even when a compatible MEX accelerator is available. ForceNative accepts
 %   a logical scalar or numeric 0 or 1 and defaults to false.
@@ -22,7 +29,7 @@ function result = DataHash(data, method, inputType, outputFormat, options)
         data = []
         method (1, 1) string {mustBeOneOf(method, ...
             ["MD2", "MD5", "SHA-1", "SHA1", "SHA-256", "SHA256", ...
-            "SHA-384", "SHA384", "SHA-512", "SHA512"])}                    = "MD5"
+            "SHA-384", "SHA384", "SHA-512", "SHA512", "sha256sum"])}       = "MD5"
         inputType (1, 1) string {mustBeOneOf(inputType, ...
             ["array", "file", "bin", "binary", "asc", "ascii"])}            = "array"
         outputFormat (1, 1) string {mustBeOneOf(outputFormat, ...
@@ -42,6 +49,16 @@ function result = DataHash(data, method, inputType, outputFormat, options)
             accelerationNames = {'SHA', 'AVX2'};
             result.CPUAccelerations = accelerationNames([cpuFeatures.SHA, cpuFeatures.AVX2]);
         end
+        return;
+    end
+
+    if strcmpi(method, "sha256sum")
+        if nargin > 2
+            error("DataHash:InvalidOption", ...
+                "sha256sum verification does not accept input-type or output-format arguments.");
+        end
+        [~, fileDigestFunction] = getHashFunctions("SHA-256", ~options.ForceNative);
+        result = verifySha256Sums(data, fileDigestFunction);
         return;
     end
 

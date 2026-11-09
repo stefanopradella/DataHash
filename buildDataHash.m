@@ -61,6 +61,7 @@ function outputFile = buildDataHash(outputFile)
         'hasDataHashCore.m'
         'digestNumericArray.m'
         'digestFile.m'
+        'verifySha256Sums.m'
         'nativeDigestCore.m'
         'serializeObject.m'
         'md2/md2Digest.m'

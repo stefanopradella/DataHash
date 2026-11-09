@@ -22,6 +22,10 @@ classdef DataHashTest < matlab.unittest.TestCase
         invalidBinaryData = invalidBinaryInputs()
         invalidAsciiData = invalidAsciiInputs()
         invalidArgumentCase = invalidArgumentCases()
+        invalidChecksumText = {'', '# No entries', 'invalid', ...
+            [repmat('g', 1, 64), '  file'], ...
+            [repmat('0', 1, 63), '  file'], ...
+            [repmat('0', 1, 64), ' ?file']}
         emptyBinaryData = emptyBinaryInputs()
         coreCase = coreCases()
         coreMethod = coreMethods()
@@ -203,6 +207,78 @@ classdef DataHashTest < matlab.unittest.TestCase
             testCase.verifyEqual(actual, boundaryCase.expected, boundaryCase.label);
         end
 
+        % matlab.unittest test methods do not support arguments blocks.
+        % evalc reads manifest, verificationMethod, and forceNative from the workspace.
+        function sha256sumMatches(testCase, forceNative, ...
+                optionRepresentation, shaAliasCasing) %#ok<INUSD>
+            abcHash = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
+            emptyHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+            abcFile = testCase.writeTemporaryFile(uint8('abc'), 'file with spaces.bin');
+            emptyFile = testCase.writeTemporaryFile(uint8([]));
+            manifest = testCase.writeTemporaryFile(uint8(sprintf( ...
+                '# Checksums\r\n\r\n%s  file with spaces.bin\r\n%s *%s', ...
+                upper(abcHash), emptyHash, emptyFile)), 'SHA256SUMS');
+            testCase.applyFixture(matlab.unittest.fixtures.CurrentFolderFixture(fileparts(abcFile)));
+            originalFiles = testCase.trackOpenFiles();
+            manifest = optionRepresentation(manifest); %#ok<NASGU>
+            verificationMethod = optionRepresentation(shaAliasCasing('SHA256SUM')); %#ok<NASGU>
+
+            output = evalc('passed = DataHash(manifest, verificationMethod, ''ForceNative'', forceNative);');
+
+            testCase.verifyTrue(passed);
+            testCase.verifyClass(passed, 'logical');
+            testCase.verifySize(passed, [1, 1]);
+            testCase.verifyEqual(output, sprintf('file with spaces.bin: OK\n%s: OK\n', emptyFile));
+            testCase.verifyEqual(openFiles(), originalFiles);
+        end
+
+        function sha256sumDefaultOptions(testCase)
+            abcHash = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
+            abcFile = testCase.writeTemporaryFile(uint8('abc'));
+            manifest = testCase.writeTemporaryFile(uint8(sprintf( ...
+                '%s  %s\n', abcHash, abcFile)), 'SHA256SUMS'); %#ok<NASGU>
+            originalFiles = testCase.trackOpenFiles();
+
+            output = evalc('passed = DataHash(manifest, ''sha256sum'');');
+
+            testCase.verifyTrue(passed);
+            testCase.verifyClass(passed, 'logical');
+            testCase.verifySize(passed, [1, 1]);
+            testCase.verifyEqual(output, sprintf('%s: OK\n', abcFile));
+            testCase.verifyEqual(openFiles(), originalFiles);
+        end
+
+        function sha256sumFailuresContinue(testCase, forceNative) %#ok<INUSD>
+            abcHash = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
+            emptyHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+            abcFile = testCase.writeTemporaryFile(uint8('abc'));
+            missingFile = fullfile(fileparts(abcFile), 'missing.bin');
+            manifest = testCase.writeTemporaryFile(uint8(sprintf( ...
+                '%s  %s\n%s *%s\n%s  %s\n', ...
+                abcHash, missingFile, emptyHash, abcFile, abcHash, abcFile)), 'SHA256SUMS'); %#ok<NASGU>
+            originalFiles = testCase.trackOpenFiles();
+
+            output = evalc('passed = DataHash(manifest, ''sha256sum'', ''ForceNative'', forceNative);');
+
+            testCase.verifyFalse(passed);
+            testCase.verifyClass(passed, 'logical');
+            testCase.verifySize(passed, [1, 1]);
+            testCase.verifySubstring(output, sprintf( ...
+                '%s: FAILED open or read\n%s: FAILED\n%s: OK\n', ...
+                missingFile, abcFile, abcFile));
+            testCase.verifyEqual(openFiles(), originalFiles);
+        end
+
+        function sha256sumInvalidManifest(testCase, invalidChecksumText)
+            manifest = testCase.writeTemporaryFile(uint8(invalidChecksumText), 'SHA256SUMS');
+            originalFiles = testCase.trackOpenFiles();
+
+            testCase.verifyError(@() DataHash(manifest, 'sha256sum'), ...
+                'DataHash:InvalidChecksumFile');
+
+            testCase.verifyEqual(openFiles(), originalFiles);
+        end
+
         function outputKnownAnswer(testCase, outputCase)
             actual = DataHash(outputCase.data, outputCase.options{:});
             testCase.verifyEqual(actual, outputCase.expected);
@@ -361,12 +437,14 @@ classdef DataHashTest < matlab.unittest.TestCase
     methods (Test, TestTags = {'ToolboxPackaging'})
         function toolboxBuildContents(testCase)
             folder = testCase.installToolboxBuildSources();
+            projectOptions = matlab.addons.toolbox.ToolboxOptions('matlab.toml');
 
             outputFile = buildDataHashToolbox();
 
             testCase.verifyEqual(outputFile, ...
                 fullfile(folder.Folder, 'release', 'DataHash.mltbx'));
-            testCase.verifyEqual(matlab.addons.toolbox.toolboxVersion(outputFile), '1.9.3');
+            testCase.verifyEqual(matlab.addons.toolbox.toolboxVersion(outputFile), ...
+                char(projectOptions.ToolboxVersion));
             extractedFolder = fullfile(folder.Folder, 'extracted');
             unzip(outputFile, extractedFolder);
             testCase.verifyToolboxAssets(folder.Folder, extractedFolder);
@@ -386,9 +464,11 @@ classdef DataHashTest < matlab.unittest.TestCase
 
         function toolboxProjectMetadata(testCase)
             folder = testCase.installToolboxBuildSources();
+            projectOptions = matlab.addons.toolbox.ToolboxOptions('matlab.toml');
+            versionSetting = "version = """ + string(projectOptions.ToolboxVersion) + """";
             configuration = replace(fileread('matlab.toml'), ...
                 ["name = ""datahash""", "display-name = ""DataHash""", ...
-                "version = ""1.9.3""", "e57a3d4b-4a80-11e4-9553-005056977bd0", ...
+                versionSetting, "e57a3d4b-4a80-11e4-9553-005056977bd0", ...
                 "MD5 and SHA hashing for MATLAB arrays, structures, cells, and files.", ...
                 "Hash MATLAB data and files without Java using MD2, MD5, SHA-1, SHA-256, SHA-384, or SHA-512, with optional MEX acceleration.", ...
                 ">=19.2.*", "[""windows"", ""macos"", ""linux""]", ...
@@ -1517,6 +1597,16 @@ function namedCases = invalidOptionCases()
     namedCases.outputInInputPosition = {'MD5', 'short'};
     namedCases.unknownInputType = {'MD5', 'unknown'};
     namedCases.unknownOutputFormat = {'MD5', 'array', 'unknown'};
+    namedCases.checksumWrongMethod = {'MD5', 'sha256sum'};
+    namedCases.checksumAsInputType = {'SHA-256', 'sha256sum'};
+    namedCases.checksumArrayInputType = {'sha256sum', 'array'};
+    namedCases.checksumFileInputType = {'sha256sum', 'file'};
+    namedCases.checksumBinaryInputType = {'sha256sum', 'bin'};
+    namedCases.checksumAsciiInputType = {'sha256sum', 'ascii'};
+    namedCases.checksumNativeInputType = {'sha256sum', 'array', 'ForceNative', true};
+    namedCases.checksumByteOutput = {'sha256sum', 'array', 'uint8'};
+    namedCases.checksumHexOutput = {'sha256sum', 'array', 'hex'};
+    namedCases.checksumUppercaseOutput = {'sha256sum', 'array', 'HEX'};
 end
 
 function namedCases = shaAliasCases()

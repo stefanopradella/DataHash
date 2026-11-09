@@ -103,6 +103,12 @@ byteHash = DataHash(uint8('abc'), 'SHA-256', 'bin');
 assert(strcmp(asciiHash, byteHash));
 ```
 
+Verify files against a SHA-256 checksum manifest, as with `sha256sum --check`:
+
+```matlab
+passed = DataHash('SHA256SUMS', 'sha256sum');
+```
+
 # Building the release files
 
 The authored functions live under `src`. From the repository root, build the
