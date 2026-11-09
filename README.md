@@ -9,7 +9,7 @@ DataHash is available as a MATLAB package or a standalone function, both with op
 
 Download the [latest release](https://github.com/stefanopradella/datahash/releases/latest). Double-click `DataHash.mltbx` in MATLAB to install the package. For standalone use, put `DataHash.m` and optionally the MEX file for your OS in a folder on the MATLAB path.
 
-Alternatively, on MATLAB R2026b or later, install the package from File Exchange:
+Alternatively, on MATLAB R2024b or later, install the package from File Exchange:
 
 ```matlab
 mpminstall("datahash")
